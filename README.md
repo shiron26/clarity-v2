@@ -99,6 +99,25 @@ worker périmé peut rester servi jusqu'à 24 h et la bannière ne se déclenche
 Sur Vercel, utiliser `rewrites` et surtout pas `routes` : les rewrites ne s'appliquent
 qu'après le système de fichiers, sinon `/sw.js` renverrait du HTML.
 
+Le reste de `vercel.json`, qui ne peut pas être commenté sur place (le validateur
+Vercel refuse le formulaire d'import avec `should NOT have additional property '//'` —
+la convention des clés `"//"` n'est pas supportée par son schéma) :
+
+- `/manifest.webmanifest` reçoit son `Content-Type` explicite, `/index.html` un
+  `no-cache` — sinon une version périmée de la coquille survit au déploiement.
+- `/assets/(.*)` et `/workbox-:hash.js` sont `immutable` : ces noms sont hachés par
+  contenu. `workbox-<hash>.js` est le runtime émis à côté de `sw.js`.
+- `regions: ["cdg1"]` (Paris) ne pilote que les fonctions serverless. Le build est
+  100 % statique, donc c'est aujourd'hui sans effet : les assets sortent du edge
+  network mondial et les données vont du navigateur à Supabase `eu-west-3` en direct.
+  La clé documente l'intention pour le jour où une route serveur apparaît — elle
+  devra rester collée à la base.
+
+Variables d'environnement à déclarer sur Vercel (Production + Preview) :
+`VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY`, rien d'autre. `SUPABASE_DB_URL` et
+`SUPABASE_SERVICE_ROLE_KEY` ne servent qu'à `scripts/smoke.ts` en local et n'ont
+rien à faire dans un build front (tout `VITE_*` est inliné en clair dans le bundle).
+
 ## Scripts
 
 | Script | Rôle |
