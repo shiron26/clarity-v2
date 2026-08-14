@@ -1,0 +1,21 @@
+<!-- Marque Clarity, source des icônes PWA (purpose "any") + favicon.
+     Reprend le mark de src/components/brand/Logo.tsx : carré arrondi au dégradé
+     `bg-brand-gradient` + glyphe ▲ blanc. Le ▲ est un <path>, jamais un <text> :
+     l'icône ne doit dépendre d'aucune police au moment du rendu.
+     Proportions issues du Logo `lg` (34px) : rayon 11/34 ≈ 32.5 %, ▲ ≈ 33 % du côté.
+     Régénérer les PNG avec scripts/gen-icons.sh après toute modification. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Équivalent SVG de linear-gradient(150deg, #0044e0, #1a66ff 55%, #2f8bff).
+         150° CSS = vecteur (sin150, -cos150) = (0.5, 0.866) ; en repère SVG (y vers
+         le bas) la ligne va donc vers le bas-droite. Longueur CSS de la ligne pour
+         un carré de côté 1 : |sin| + |cos| = 1.366, d'où les extrémités hors [0,1]. -->
+    <linearGradient id="brand" x1="0.1585" y1="-0.0915" x2="0.8415" y2="1.0915">
+      <stop offset="0" stop-color="#0044e0" />
+      <stop offset="0.55" stop-color="#1a66ff" />
+      <stop offset="1" stop-color="#2f8bff" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="166" ry="166" fill="url(#brand)" />
+  <path d="M256 180 L344 332 L168 332 Z" fill="#ffffff" />
+</svg>

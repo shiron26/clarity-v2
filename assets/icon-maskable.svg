@@ -1,0 +1,19 @@
+<!-- Variante plein cadre de assets/icon.svg. Sert deux cibles :
+     - icône PWA `purpose: "maskable"` : le système applique SON propre masque
+       (cercle, squircle, goutte…), donc le fond doit couvrir tout le carré et le
+       motif tenir dans la zone sûre — le cercle central de 80 % du côté, soit un
+       rayon de 204.8 px sur 512. Le ▲ ci-dessous culmine à ~129 px du centre. ✔
+     - apple-touch-icon : iOS arrondit lui-même et rend noir tout pixel transparent,
+       d'où le carré opaque sans coins arrondis.
+     Régénérer les PNG avec scripts/gen-icons.sh après toute modification. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="brand" x1="0.1585" y1="-0.0915" x2="0.8415" y2="1.0915">
+      <stop offset="0" stop-color="#0044e0" />
+      <stop offset="0.55" stop-color="#1a66ff" />
+      <stop offset="1" stop-color="#2f8bff" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#brand)" />
+  <path d="M256 180 L344 332 L168 332 Z" fill="#ffffff" />
+</svg>

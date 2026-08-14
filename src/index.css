@@ -1,0 +1,448 @@
+@import "tailwindcss";
+/* Sora auto-hébergée plutôt que servie par Google Fonts : le service worker ne peut
+   précacher que des assets du build, et une PWA hors ligne qui perd sa police perd
+   toute son échelle typographique (construite sur les métriques de Sora). */
+@import "@fontsource-variable/sora";
+
+/* Tokens du design system (DESIGN.md). Tailwind v4 = config CSS-first : chaque
+   variable de @theme génère les utilitaires correspondants (bg-*, text-*, rounded-*…). */
+@theme {
+  /* « Sora Variable » et non « Sora » : c'est le nom de famille déclaré par les
+     @font-face de @fontsource-variable/sora. Se tromper ici est silencieux — la
+     page retombe simplement sur system-ui. */
+  --font-sans: 'Sora Variable', system-ui, sans-serif;
+
+  /* Surfaces */
+  --color-canvas: #f7f6f3;
+  --color-surface: #ffffff;
+  --color-surface-sidebar: #fdfdfb;
+  --color-surface-subtle: #f2f1ec;
+  --color-field: #ecebe6;
+  --color-auth-canvas: #faf9f6;
+  --color-night: #17181f;
+  --color-night-soft: #212229;
+  --color-night-line: #2a2b33;
+
+  /* Texte — la hiérarchie se fait par contraste de gris, pas par la couleur */
+  --color-ink: #17181f;
+  --color-ink-2: #4a4b55;
+  --color-ink-3: #6d6e78;
+  --color-ink-muted: #9a9aa6;
+  --color-ink-faint: #8b8b93;
+  --color-ink-onnight: #7c8097;
+  --color-placeholder: #a5a5ad;
+
+  /* Action — seul signal d'action de l'UI */
+  --color-primary: #1a66ff;
+  --color-primary-hover: #0f4fd6;
+  --color-primary-active: #0b3fae;
+  --color-primary-soft: #e6ecff;
+  --color-link: #4a7aff;
+  --color-link-hover: #8aa8ff;
+
+  /* Statut */
+  --color-accent: #e8590c;
+  --color-accent-bg: #fdf3e4;
+  --color-danger: #d6431f;
+  --color-danger-bg: #fdeadb;
+  --color-success: #00b862;
+  --color-warn: #e8a80c;
+
+  /* Bordures */
+  --color-border: #ecebe6;
+  --color-border-strong: #dcdbd4;
+  --color-border-ok: #8fe0b6;
+  --color-border-ko: #f3b9a4;
+  --color-border-idle: #d8d7d0;
+
+  /* Rayons — échelle 6 → 26, jamais de coin pointu. `panel` (14px) est nommé plutôt
+     que numéroté : c'est le rayon des panneaux dépliés et des popovers de la maquette,
+     coincé entre `lg` et `xl` sans place dans l'échelle t-shirt. */
+  --radius-xs: 6px;
+  --radius-sm: 9px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-panel: 14px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 26px;
+
+  /* Ombres — toujours diffuses, jamais de bordure dure */
+  --shadow-card: 0 1px 3px rgb(23 24 31 / 0.04), 0 10px 30px rgb(23 24 31 / 0.05);
+  --shadow-modal: 0 30px 80px rgb(0 0 0 / 0.35);
+  --shadow-dropdown: 0 14px 36px rgb(0 0 0 / 0.14);
+  /* Popovers : plus portées qu'un dropdown, parce qu'ils flottent au-dessus d'une
+     modale (calendrier du pied de modale) ou d'une liste dense (action de ligne). */
+  --shadow-popover: 0 14px 34px rgb(23 24 31 / 0.14);
+  --shadow-popover-strong: 0 18px 44px rgb(23 24 31 / 0.16);
+  --shadow-primary: 0 4px 14px rgb(26 102 255 / 0.28);
+  --shadow-primary-hover: 0 8px 22px rgb(15 79 214 / 0.34);
+  --shadow-primary-active: 0 2px 8px rgb(11 63 174 / 0.3);
+  --shadow-fab: 0 10px 28px rgb(26 102 255 / 0.35);
+
+  /* Échelle typo relevée sur la maquette (les demi-pixels sont volontaires) */
+  --text-micro: 9px;
+  --text-caption: 10.5px;
+  --text-label: 11.5px;
+  --text-body: 12.5px;
+  --text-ui: 13.5px;
+  --text-card: 14.5px;
+  --text-title: 17px;
+  --text-h1: 20px;
+  --text-display: 29px;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+}
+
+/* --- Exceptions CSS assumées : ce que Tailwind ne sait pas exprimer en classe --- */
+
+/* Dégradé de marque (pastille du logo, avatars, FAB) : pas de token de gradient en v4. */
+@utility bg-brand-gradient {
+  background-image: linear-gradient(150deg, #0044e0, #1a66ff 55%, #2f8bff);
+}
+
+@keyframes authIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Entrée des écrans d'auth (@keyframes non exprimable en utilitaire Tailwind). */
+@utility animate-auth-in {
+  animation: authIn 0.5s ease both;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@utility animate-fade-in {
+  animation: fadeIn 0.25s ease both;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(36px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility animate-slide-up {
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Flow de review, étape « régularité » : chaque case de la semaine éclôt à son
+   tour. Le décalage entre cases est posé en style inline (animation-delay), une
+   @utility ne prend pas de paramètre. */
+@keyframes cellIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.07);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@utility animate-cell-in {
+  animation: cellIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Compteur d'ouverture du flow : le chiffre se pose avant de commencer à
+   grimper (le comptage lui-même est piloté en JS, pas en CSS). */
+@keyframes numIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@utility animate-num-in {
+  animation: numIn 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Feuille mobile pleine hauteur (formulaires de tâche, gestion des listes) :
+   elle monte depuis le bas de l'écran, elle ne se contente pas d'apparaître. */
+@keyframes sheetUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@utility animate-sheet-up {
+  animation: sheetUp 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Case du jour en cours dans la heatmap : respiration lente. */
+@keyframes cellPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@utility animate-cell-pulse {
+  animation: cellPulse 1.8s ease-in-out infinite;
+}
+
+/* Badge de tendance : halo qui respire, la couleur vient du composant. */
+@keyframes trendPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 10px currentColor;
+  }
+  50% {
+    box-shadow: 0 0 30px currentColor;
+  }
+}
+
+@utility animate-trend-pulse {
+  animation: trendPulse 2.6s ease-in-out infinite;
+}
+
+/* Célébration d'un objectif atteint. Durée et délai des confettis varient d'une
+   particule à l'autre : ils sont posés en style inline, une @utility Tailwind ne
+   prend pas de paramètre. */
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@utility animate-fade-out {
+  animation: fadeOut 0.45s ease both;
+}
+
+@keyframes confettiFall {
+  0% {
+    transform: translateY(-20px) rotate(0deg);
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(560px) rotate(600deg);
+    opacity: 0;
+  }
+}
+
+/* La carte arrive de loin, en perspective, avant de se redresser. */
+@keyframes cardArrive {
+  0% {
+    opacity: 0;
+    transform: perspective(900px) translateY(150px) rotateX(38deg) rotateY(-20deg) scale(0.7);
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(900px) translateY(0) rotateX(0deg) rotateY(0deg) scale(1);
+  }
+}
+
+@utility animate-card-arrive {
+  animation: cardArrive 1.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes objPop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@utility animate-obj-pop {
+  animation: objPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Carte d'objectif qui se rallume quand une tâche liée est créditée du jour :
+   elle tressaille, puis la couleur revient en sur-saturant brièvement. */
+@keyframes cardPop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.035);
+  }
+  65% {
+    transform: scale(0.99);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes colorReveal {
+  0% {
+    filter: grayscale(1) brightness(0.94) saturate(0) contrast(0.94) opacity(0.72);
+  }
+  60% {
+    filter: grayscale(0) brightness(1.12) saturate(1.25) opacity(1);
+  }
+  100% {
+    filter: none;
+  }
+}
+
+@utility animate-card-lit {
+  animation:
+    cardPop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1),
+    colorReveal 1.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Gerbes de particules : la trajectoire (--tx/--ty), la durée et le délai sont
+   posés en style inline, une @utility Tailwind ne prend pas de paramètre. */
+@keyframes fxBurst {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--tx), var(--ty)) scale(0.15);
+    opacity: 0;
+  }
+}
+
+@keyframes fxRing {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.1);
+    opacity: 0;
+  }
+}
+
+@utility animate-fx-ring {
+  animation: fxRing 0.55s ease-out forwards;
+}
+
+/* Balayage de lumière qui traverse la carte au moment où elle se rallume. */
+@keyframes cardShine {
+  0% {
+    transform: translateX(-120%) skewX(-12deg);
+  }
+  100% {
+    transform: translateX(320%) skewX(-12deg);
+  }
+}
+
+@utility animate-card-shine {
+  animation: cardShine 0.8s ease-out forwards;
+}
+
+@keyframes cardGlow {
+  0% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@utility animate-card-glow {
+  animation: cardGlow 0.7s ease-out forwards;
+}
+
+@keyframes cbPop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.4);
+  }
+  70% {
+    transform: scale(0.88);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@utility animate-cb-pop {
+  animation: cbPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Sortie d'une tâche cochée : la ligne flashe, puis se replie avant de quitter
+   la liste (l'écran Tâches la retrouvera dans sa section « Terminé »). */
+@keyframes rowFlash {
+  0% {
+    background: #eef1ff;
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+@utility animate-row-flash {
+  animation: rowFlash 0.8s ease-out;
+}
+
+@keyframes rowCollapse {
+  0% {
+    max-height: 72px;
+  }
+  100% {
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-width: 0;
+  }
+}
+
+@utility animate-row-collapse {
+  animation: rowCollapse 0.32s ease forwards;
+}

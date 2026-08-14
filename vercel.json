@@ -1,0 +1,32 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "//": "`rewrites` et surtout PAS `routes` : les rewrites ne s'appliquent qu'après le système de fichiers, donc /sw.js, /manifest.webmanifest et les PNG sont servis tels quels et seules les vraies routes SPA retombent sur index.html. Avec `routes`, /sw.js renverrait du HTML et l'enregistrement du service worker échouerait sur une erreur de type MIME.",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "headers": [
+    {
+      "//": "Sans no-cache, un sw.js périmé peut rester servi jusqu'à 24 h et la bannière de mise à jour ne se déclenche jamais.",
+      "source": "/sw.js",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "Content-Type", "value": "application/manifest+json; charset=utf-8" }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "//": "Assets hachés par contenu : immuables. workbox-<hash>.js est le runtime émis à côté de sw.js.",
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "source": "/workbox-:hash.js",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
+  ]
+}

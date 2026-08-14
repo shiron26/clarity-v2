@@ -1,0 +1,141 @@
+// Forme du JSON `task.recurrence`. Ce module est le SEUL endroit qui la connaît,
+// et il doit rester le miroir exact de `private.next_due` (migration 0008) :
+// le serveur ne valide rien, et un motif qu'il ne reconnaît pas arrête la chaîne
+// **en silence** — la tâche récurrente cesse simplement de se régénérer.
+//
+// Ce que le serveur sait faire, et rien d'autre :
+//   { type: 'daily',   interval }              → jour de complétion + interval jours
+//   { type: 'weekly',  interval, weekdays[] }  → prochain jour listé, sinon lundi + 7×interval
+//   { type: 'monthly', interval }              → jour de complétion + interval mois
+//
+// Il n'y a pas d'objet « série » : chaque occurrence porte sa propre règle, et le
+// serveur crée la suivante à la complétion (SPEC §4.3).
+import type { Json } from '../types/database'
+
+export type RecurrenceType = 'daily' | 'weekly' | 'monthly'
+
+export type Recurrence = {
+  type: RecurrenceType
+  /** ≥ 1. Le serveur clampe déjà (`greatest(…, 1)`), on ne lui envoie pas de 0. */
+  interval: number
+  /** Jours ISO (1 = lundi … 7 = dimanche), hebdomadaire uniquement. */
+  weekdays?: number[]
+}
+
+/**
+ * Ce que l'utilisateur choisit dans le segmenté. « Annuel » n'existe pas côté
+ * serveur : il s'encode en mois × 12, ce que `next_due` calcule exactement
+ * (`make_interval(months => 12)`).
+ */
+export type RecurrencePreset = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'
+
+export const WEEKDAYS: ReadonlyArray<{ iso: number; short: string; long: string }> = [
+  { iso: 1, short: 'L', long: 'lundi' },
+  { iso: 2, short: 'M', long: 'mardi' },
+  { iso: 3, short: 'M', long: 'mercredi' },
+  { iso: 4, short: 'J', long: 'jeudi' },
+  { iso: 5, short: 'V', long: 'vendredi' },
+  { iso: 6, short: 'S', long: 'samedi' },
+  { iso: 7, short: 'D', long: 'dimanche' },
+]
+
+/** `Task.recurrence` est un `unknown` venu de la base : on ne fait confiance à rien. */
+export function parseRecurrence(value: unknown): Recurrence | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as Record<string, unknown>
+
+  const type = raw.type
+  if (type !== 'daily' && type !== 'weekly' && type !== 'monthly') return null
+
+  const interval = Math.max(1, Math.trunc(Number(raw.interval ?? 1)) || 1)
+
+  if (type !== 'weekly') return { type, interval }
+
+  const weekdays = Array.isArray(raw.weekdays)
+    ? [...new Set(raw.weekdays.map((d) => Math.trunc(Number(d))).filter((d) => d >= 1 && d <= 7))].sort(
+        (a, b) => a - b,
+      )
+    : []
+
+  return weekdays.length > 0 ? { type, interval, weekdays } : { type, interval }
+}
+
+/** N'émet que les clés que le serveur lit — aucune donnée parasite en base. */
+export function toRecurrenceJson(rule: Recurrence | null): Json | null {
+  if (!rule) return null
+  if (rule.type === 'weekly' && rule.weekdays?.length) {
+    return { type: rule.type, interval: rule.interval, weekdays: rule.weekdays }
+  }
+  return { type: rule.type, interval: rule.interval }
+}
+
+/** Le segment à cocher dans l'éditeur pour une règle donnée. */
+export function presetOf(rule: Recurrence | null): RecurrencePreset {
+  if (!rule) return 'none'
+  if (rule.type === 'monthly' && rule.interval % 12 === 0) return 'yearly'
+  return rule.type
+}
+
+/** Nombre affiché dans « Tous les N … » : les ans sont des mois divisés par 12. */
+export function intervalOf(rule: Recurrence | null): number {
+  if (!rule) return 1
+  return presetOf(rule) === 'yearly' ? rule.interval / 12 : rule.interval
+}
+
+/** Construit une règle depuis l'état de l'éditeur. `none` → pas de récurrence. */
+export function buildRecurrence(
+  preset: RecurrencePreset,
+  interval: number,
+  weekdays: number[],
+): Recurrence | null {
+  const every = Math.max(1, Math.trunc(interval) || 1)
+  switch (preset) {
+    case 'none':
+      return null
+    case 'daily':
+      return { type: 'daily', interval: every }
+    case 'weekly':
+      return weekdays.length > 0
+        ? { type: 'weekly', interval: every, weekdays: [...weekdays].sort((a, b) => a - b) }
+        : { type: 'weekly', interval: every }
+    case 'monthly':
+      return { type: 'monthly', interval: every }
+    case 'yearly':
+      return { type: 'monthly', interval: every * 12 }
+  }
+}
+
+const UNITS: Record<RecurrencePreset, [string, string]> = {
+  none: ['', ''],
+  daily: ['jour', 'jours'],
+  weekly: ['semaine', 'semaines'],
+  monthly: ['mois', 'mois'],
+  yearly: ['an', 'ans'],
+}
+
+/** Nom de l'unité pour « Tous les <n> ___ ». */
+export function unitLabel(preset: RecurrencePreset, interval: number): string {
+  const [one, many] = UNITS[preset]
+  return interval === 1 ? one : many
+}
+
+const SIMPLE: Record<RecurrencePreset, string> = {
+  none: 'Aucune',
+  daily: 'Quotidien',
+  weekly: 'Hebdomadaire',
+  monthly: 'Mensuel',
+  yearly: 'Annuel',
+}
+
+/**
+ * Résumé affiché sur le déclencheur « ↻ … ». Volontairement court : les jours
+ * retenus sont visibles juste en dessous, dans le panneau, et un libellé long
+ * ferait passer la barre d'outils à la ligne.
+ */
+export function recurrenceSummary(rule: Recurrence | null): string {
+  const preset = presetOf(rule)
+  if (preset === 'none') return SIMPLE.none
+
+  const every = intervalOf(rule)
+  return every === 1 ? SIMPLE[preset] : `Tous les ${every} ${unitLabel(preset, every)}`
+}
