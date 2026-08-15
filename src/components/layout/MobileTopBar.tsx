@@ -1,10 +1,16 @@
+import type { Ref } from 'react'
 import { useAuth } from '../../features/auth/useAuth'
 import { useProfile } from '../../hooks/useProfile'
 import { Logo } from '../brand/Logo'
 import { LogoutIcon } from '../icons/LogoutIcon'
 import { Avatar } from '../ui/Avatar'
 
-export function MobileTopBar() {
+type MobileTopBarProps = {
+  /** Reçoit le nœud où les écrans envoient leurs actions — voir `topBarSlot.ts`. */
+  actionsRef?: Ref<HTMLDivElement>
+}
+
+export function MobileTopBar({ actionsRef }: MobileTopBarProps) {
   const { signOut } = useAuth()
   const profile = useProfile()
 
@@ -13,6 +19,10 @@ export function MobileTopBar() {
     <header className="flex shrink-0 items-center gap-2.5 px-5 pt-[calc(1.375rem+env(safe-area-inset-top))] pb-3 lg:hidden">
       <Logo size="sm" />
       <div className="ml-auto flex items-center gap-2">
+        {/* Actions de l'écran courant, avant la déconnexion : les remonter ici
+            épargne une pleine ligne de barre d'outils sous le logo. */}
+        <div ref={actionsRef} className="flex items-center gap-1" />
+
         <button
           type="button"
           onClick={() => void signOut()}

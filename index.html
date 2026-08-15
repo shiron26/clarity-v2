@@ -4,8 +4,13 @@
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover : indispensable en mode installé sur iOS pour que
          env(safe-area-inset-*) renvoie autre chose que 0 (cf. MobileTopBar /
-         MobileTabBar, qui s'appuient dessus pour dégager encoche et indicateur). -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+         MobileTabBar, qui s'appuient dessus pour dégager encoche et indicateur).
+         maximum-scale/user-scalable : verrouillent l'échelle en PWA installée. Safari
+         les ignore en onglet depuis iOS 10 — c'est main.tsx qui prend le relais là. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no"
+    />
     <title>Clarity</title>
     <meta name="description" content="Vos tâches et vos objectifs, au même endroit." />
     <!-- Valeur unique : l'app n'a ni en-tête coloré ni dark mode. -->

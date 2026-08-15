@@ -76,6 +76,12 @@ export function TaskFormModal({
 
   const dueTriggerRef = useRef<HTMLButtonElement>(null)
 
+  // Cette feuille est montée avec `open` en dur et son hôte la démonte dès la
+  // fermeture : passer par `Modal` est le seul moyen de voir la feuille redescendre
+  // après un ajout réussi, au lieu de la voir s'éteindre.
+  const closeRef = useRef<(() => void) | null>(null)
+  const close = useCallback(() => (closeRef.current ?? onClose)(), [onClose])
+
   const resetFields = useCallback(() => {
     setTitle('')
     setDescription('')
@@ -132,7 +138,7 @@ export function TaskFormModal({
       {
         onSuccess: () => {
           if (!chain) {
-            onClose()
+            close()
             return
           }
           resetFields()
@@ -175,6 +181,7 @@ export function TaskFormModal({
       title="Nouvelle tâche"
       variant="sheet"
       className="sm:w-[760px]"
+      closeRef={closeRef}
     >
       {/* Un vrai formulaire : le clic sur « Ajouter » et la validation clavier
           convergent vers `submitNow()`. */}
@@ -185,7 +192,10 @@ export function TaskFormModal({
           submitNow()
         }}
         onKeyDown={handleKeyDown}
-        className="flex flex-col"
+        // `flex-1` en mobile : le formulaire prend toute la hauteur de la feuille,
+        // seule façon pour son pied d'aller se coller en bas. Sans effet en desktop,
+        // où le panneau de `Modal` repasse en bloc.
+        className="flex flex-1 flex-col"
       >
         {/* Mobile : l'importance monte à côté du titre — le pied de feuille est pris
             par l'enchaînement et le bouton d'ajout. Un seul champ, pas deux rendus :
@@ -242,8 +252,10 @@ export function TaskFormModal({
         )}
 
         {/* Mobile : échéance et récurrence sont des lignes qu'on déplie, à la
-            convention des feuilles — pas de survol pour découvrir un panneau. */}
-        <div className="sm:hidden">
+            convention des feuilles — pas de survol pour découvrir un panneau.
+            Colonne flex extensible : c'est le dernier maillon qui laisse le pied
+            descendre en bas de feuille. */}
+        <div className="flex flex-1 flex-col sm:hidden">
           <p className={cn(LABEL, 'mt-4.5 mb-2')}>ÉCHÉANCE</p>
           <button
             type="button"
@@ -298,9 +310,10 @@ export function TaskFormModal({
             </div>
           )}
 
-          {/* La maquette colle ce pied en bas de feuille (`margin-top:auto`) ; le
-              panneau de `Modal` n'est pas une colonne flex, donc une marge fixe. */}
-          <div className="mt-8 flex flex-col gap-2.5">
+          {/* Pied collé en bas de feuille, comme la maquette : `mt-auto` mange
+              l'espace libre quand le formulaire est court, et `pt-8` garde le même
+              écart au contenu quand il est long et qu'il faut défiler. */}
+          <div className="mt-auto flex flex-col gap-2.5 pt-8">
             <Switch checked={chain} onChange={setChain} label="Enchaîner une autre tâche après l’ajout">
               <span className="text-body text-ink-3">Enchaîner une autre tâche après l’ajout</span>
             </Switch>

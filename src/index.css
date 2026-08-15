@@ -97,6 +97,25 @@
     background-color: var(--color-canvas);
     color: var(--color-ink);
     font-family: var(--font-sans);
+    /* Coupe le zoom au double-tap (et le délai de 300 ms qui l'accompagne) sans
+       toucher au défilement. */
+    touch-action: manipulation;
+  }
+}
+
+/* iOS zoome sur un champ dont la police fait moins de 16px, et ne dézoome jamais en
+   sortie. Nos champs vont de 11,5 à 14px : ils passent tous à 16px au doigt, et gardent
+   l'échelle des maquettes au curseur.
+
+   Hors `@layer` volontairement : un `@layer base` perdrait contre les utilitaires
+   Tailwind (`text-ui`, `text-[12px]`…) posés sur chaque champ. Du CSS non layerisé
+   l'emporte sur tout `@layer` — un champ qui voudrait plus grand au doigt devra le
+   dire en `!`. */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']),
+  textarea,
+  select {
+    font-size: 16px;
   }
 }
 
@@ -149,6 +168,59 @@
 
 @utility animate-slide-up {
   animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Sorties de modale — la fermeture rejoue l'ouverture à l'envers. Même durée, même
+   courbe retournée (le miroir de cubic-bezier(x1,y1,x2,y2) est
+   cubic-bezier(1-x2,1-y2,1-x1,1-y1)). `EXIT_MS` (src/components/ui/Modal.tsx)
+   reproduit cette durée : c'est lui qui décide du moment du démontage. Les modifier
+   ensemble ou pas du tout. */
+@keyframes sheetDown {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+/* Miroir de `sheetUp` : la feuille redescend, elle ne s'efface pas. Aucune opacité
+   ici — elle glisse hors de l'écran, exactement comme elle en est venue. */
+@utility animate-sheet-down {
+  animation: sheetDown 0.36s cubic-bezier(0.8, 0, 0.6, 1) both;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(36px);
+  }
+}
+
+/* Miroir de `slideUp` — le panneau, lui, arrive bien en fondu : sa sortie le rend. */
+@utility animate-slide-down {
+  animation: slideDown 0.36s cubic-bezier(0.7, 0, 0.84, 0) both;
+}
+
+/* Le voile s'efface par sa COULEUR, pas par `opacity` : le panneau est son enfant,
+   et une opacité posée ici l'emporterait dans le fondu au lieu de le laisser
+   descendre. C'est toute la différence entre « la feuille se referme » et « la
+   feuille s'éteint ». */
+@keyframes scrimOut {
+  from {
+    background-color: rgb(16 17 22 / 0.45);
+  }
+  to {
+    background-color: rgb(16 17 22 / 0);
+  }
+}
+
+@utility animate-scrim-out {
+  animation: scrimOut 0.36s ease both;
 }
 
 /* Flow de review, étape « régularité » : chaque case de la semaine éclôt à son

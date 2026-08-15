@@ -1,3 +1,4 @@
+import { CalendarIcon } from '../../../components/icons/CalendarIcon'
 import { ListPill } from '../../../components/tasks/ListPill'
 import { TaskCheckbox } from '../../../components/tasks/TaskCheckbox'
 import type { DonePhase } from '../../../components/tasks/taskDone'
@@ -12,6 +13,9 @@ type TaskRowCompactProps = {
   list: List | undefined
   donePhase?: DonePhase
   reducedMotion?: boolean
+  /** « En retard · Hier » — posé par la section du même nom, absent ailleurs. Le
+   *  délai est calculé par l'appelant, qui seul connaît l'ancre serveur. */
+  overdueLabel?: string
   onToggle: (task: Task) => void
   /** Toucher la ligne ouvre la feuille d'édition (maquette mobile). */
   onOpen: (task: Task) => void
@@ -27,6 +31,7 @@ export function TaskRowCompact({
   list,
   donePhase,
   reducedMotion = false,
+  overdueLabel,
   onToggle,
   onOpen,
 }: TaskRowCompactProps) {
@@ -35,7 +40,8 @@ export function TaskRowCompact({
   const linked = accent !== null && !done
   const bursting = donePhase !== undefined && !reducedMotion
 
-  const hasMeta = !!list || task.recurrence != null || task.is_important || !!task.space_id
+  const hasMeta =
+    !!overdueLabel || !!list || task.recurrence != null || task.is_important || !!task.space_id
 
   return (
     <li
@@ -80,7 +86,13 @@ export function TaskRowCompact({
         </span>
 
         {hasMeta && (
-          <span className="flex items-center gap-1.5">
+          <span className="flex min-w-0 items-center gap-1.5">
+            {overdueLabel && (
+              <span className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-danger">
+                <CalendarIcon className="size-3 shrink-0" />
+                {overdueLabel}
+              </span>
+            )}
             {list && <ListPill name={list.name} color={list.color} size="sm" />}
             {task.recurrence != null && (
               <span className="text-[14px] text-ink-muted" aria-hidden>

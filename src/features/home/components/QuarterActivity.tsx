@@ -27,11 +27,15 @@ export function QuarterActivity({
   const { prefs } = useDashboardPrefs()
 
   return (
-    <section className="rounded-2xl bg-night px-5.5 py-5">
+    <section className="overflow-hidden rounded-2xl bg-night px-5.5 py-5">
       <h2 className="mb-3.5 text-[11px] font-semibold tracking-[1.5px] text-ink-onnight">
         ACTIVITÉ TRIMESTRIELLE · Q{quarter}
       </h2>
 
+      {/* `fit` : la carte affiche autant de semaines que la piste en accepte, les
+          plus récentes d'abord. La bascule à 2 puis 3 colonnes rétrécit chaque
+          piste — un écran plus large donne parfois moins de place ici, d'où une
+          mesure de la largeur réelle plutôt qu'un breakpoint. */}
       <div className="grid gap-6.5 sm:grid-cols-2 lg:grid-cols-3">
         {objectives.map((objective) => (
           <ObjectiveHeatmap
@@ -42,6 +46,9 @@ export function QuarterActivity({
             activeDays={activeDays}
             today={today}
             privacy={prefs.privacy}
+            showDayLabels
+            showMonthLabels
+            fit
           />
         ))}
       </div>

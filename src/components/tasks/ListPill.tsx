@@ -50,13 +50,16 @@ export const ListPill = forwardRef<HTMLButtonElement, ListPillProps>(function Li
           style={{ backgroundColor: color ?? '#9a9aa6' }}
         />
       )}
-      {dashed ? '+ Liste' : name}
+      {/* Le nom se tronque plutôt que d'imposer sa largeur : sans borne, une
+          liste au nom long élargit la ligne de tâche, puis la carte qui la
+          contient — jusqu'à déborder du viewport en mobile. */}
+      <span className="truncate">{dashed ? '+ Liste' : name}</span>
       {children}
     </>
   )
 
   const base = cn(
-    'flex items-center rounded-2xl whitespace-nowrap',
+    'flex min-w-0 items-center rounded-2xl whitespace-nowrap',
     SIZES[size],
     dashed
       ? 'border border-dashed border-border-idle font-semibold text-ink-muted'

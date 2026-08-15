@@ -25,7 +25,7 @@ export function OverdueCard({
   if (tasks.length === 0) return null
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-5">
+    <section className="min-w-0 rounded-2xl border border-border bg-surface p-5">
       <h2 className="mb-1.5 text-body font-semibold tracking-[1.2px] text-danger">
         EN RETARD ({tasks.length})
       </h2>
