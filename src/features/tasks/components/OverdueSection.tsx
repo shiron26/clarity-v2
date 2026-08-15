@@ -1,17 +1,27 @@
-import { CalendarIcon } from '../../../components/icons/CalendarIcon'
-import { TaskCheckbox } from '../../../components/tasks/TaskCheckbox'
 import type { DonePhase } from '../../../components/tasks/taskDone'
+import type { List } from '../../../hooks/useLists'
 import type { Task } from '../../../hooks/useTasks'
 import { formatOverdueDelay, type IsoDate } from '../../../lib/appDate'
 import { cn } from '../../../lib/cn'
-import { objectiveSkin } from '../../../lib/objectivePalette'
+import { TaskListRow } from './TaskListRow'
+import { TaskRowCompact } from './TaskRowCompact'
 
 type OverdueSectionProps = {
   tasks: Task[]
   /** Ancre serveur : c'est elle qui date le retard, pas l'horloge du navigateur. */
   today: IsoDate
   objectiveSlotOf: (task: Task) => number | null | undefined
+  /** Listes indexées par id, pour la pastille de chaque ligne. */
+  listById: Map<string, List>
+  /** Toutes les listes, pour le menu de la pastille en desktop. */
+  lists: List[]
   onToggle: (task: Task) => void
+  onRename: (task: Task, title: string) => void
+  onToggleImportant: (task: Task) => void
+  onPickList: (task: Task, listId: string | null) => void
+  onPickDue: (task: Task, dueDate: IsoDate | null) => void
+  onOpen: (task: Task) => void
+  onDelete: (task: Task) => void
   /** Report en masse (SPEC §5) — tâches personnelles uniquement. */
   onPostponeAll: () => void
   postponing: boolean
@@ -20,11 +30,25 @@ type OverdueSectionProps = {
   className?: string
 }
 
+/**
+ * Le retard a sa section, pas ses propres lignes : ce sont celles du reste de
+ * l'écran, aux mêmes breakpoints, pour que les deux blocs se manipulent
+ * pareil. Seule différence assumée — pas de poignée de glisser : l'ordre manuel
+ * porte sur la liste entière, réordonner une sous-section ne veut rien dire.
+ */
 export function OverdueSection({
   tasks,
   today,
   objectiveSlotOf,
+  listById,
+  lists,
   onToggle,
+  onRename,
+  onToggleImportant,
+  onPickList,
+  onPickDue,
+  onOpen,
+  onDelete,
   onPostponeAll,
   postponing,
   donePhaseFor,
@@ -32,6 +56,10 @@ export function OverdueSection({
   className,
 }: OverdueSectionProps) {
   if (tasks.length === 0) return null
+
+  const delayOf = (task: Task) =>
+    task.due_date ? `En retard · ${formatOverdueDelay(task.due_date, today)}` : undefined
+  const listOf = (task: Task) => (task.list_id ? listById.get(task.list_id) : undefined)
 
   return (
     <section className={className}>
@@ -56,64 +84,44 @@ export function OverdueSection({
         </button>
       </div>
 
-      <ul className="flex flex-col">
-        {tasks.map((task, index) => {
-          const slot = objectiveSlotOf(task)
-          const accent = slot != null ? objectiveSkin(slot).core : null
-          const donePhase = donePhaseFor(task.id)
-          const done = task.completed_at !== null
+      <ul className="hidden flex-col lg:flex">
+        {tasks.map((task) => (
+          <TaskListRow
+            key={task.id}
+            task={task}
+            objectiveSlot={objectiveSlotOf(task)}
+            list={listOf(task)}
+            lists={lists}
+            today={today}
+            canDrag={false}
+            donePhase={donePhaseFor(task.id)}
+            reducedMotion={reducedMotion}
+            overdueLabel={delayOf(task)}
+            onToggle={onToggle}
+            onRename={onRename}
+            onToggleImportant={onToggleImportant}
+            onPickList={onPickList}
+            onPickDue={onPickDue}
+            onOpen={onOpen}
+            onDelete={onDelete}
+          />
+        ))}
+      </ul>
 
-          return (
-            <li
-              key={task.id}
-              className={cn(
-                'flex items-center gap-2.5 lg:gap-[13px]',
-                'min-h-10 px-0.5 py-[7px] lg:min-h-0 lg:px-1 lg:py-[13px]',
-                index < tasks.length - 1 && 'border-b border-surface-subtle lg:border-b-0',
-                !reducedMotion && donePhase === 1 && 'animate-row-flash',
-                !reducedMotion && donePhase === 2 && 'animate-row-collapse overflow-hidden',
-              )}
-            >
-              <TaskCheckbox
-                done={done}
-                title={task.title}
-                accent={accent}
-                bursting={donePhase !== undefined && !reducedMotion}
-                onToggle={() => onToggle(task)}
-              />
-
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5 lg:gap-[3px]">
-                <span
-                  className={cn(
-                    'truncate text-[12.5px] lg:text-[13px]',
-                    done ? 'text-ink-muted line-through' : 'text-ink',
-                  )}
-                >
-                  {task.title}
-                </span>
-                {task.due_date && (
-                  <span className="flex items-center gap-1 text-[11px] font-semibold text-danger">
-                    <CalendarIcon className="size-3 shrink-0" />
-                    En retard · {formatOverdueDelay(task.due_date, today)}
-                  </span>
-                )}
-              </div>
-
-              {task.space_id && (
-                <span
-                  className={cn(
-                    'flex shrink-0 items-center gap-[5px] rounded-2xl text-[9.5px] font-semibold',
-                    'bg-accent-bg px-2 py-px text-accent',
-                    'lg:border lg:border-border lg:bg-surface lg:px-[9px] lg:py-0.5 lg:text-ink-2',
-                  )}
-                >
-                  <span aria-hidden className="hidden size-[5px] rounded-full bg-accent lg:block" />
-                  Espace
-                </span>
-              )}
-            </li>
-          )
-        })}
+      <ul className="flex flex-col lg:hidden">
+        {tasks.map((task) => (
+          <TaskRowCompact
+            key={task.id}
+            task={task}
+            objectiveSlot={objectiveSlotOf(task)}
+            list={listOf(task)}
+            donePhase={donePhaseFor(task.id)}
+            reducedMotion={reducedMotion}
+            overdueLabel={delayOf(task)}
+            onToggle={onToggle}
+            onOpen={onOpen}
+          />
+        ))}
       </ul>
     </section>
   )

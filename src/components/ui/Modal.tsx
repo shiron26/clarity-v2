@@ -1,5 +1,22 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import { cn } from '../../lib/cn'
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion'
+
+/**
+ * Durée de la sortie, en millisecondes — **doit rester alignée** sur les `@utility`
+ * `animate-sheet-down` / `animate-slide-down` / `animate-scrim-out` de
+ * `src/index.css`. C'est ce délai qui décide du démontage : trop court, la feuille
+ * disparaît en pleine descente ; trop long, elle reste figée hors écran.
+ */
+const EXIT_MS = 360
 
 type ModalProps = {
   open: boolean
@@ -18,6 +35,14 @@ type ModalProps = {
   className?: string
   /** Surcharge du voile — sert à ajuster l'ancrage vertical du panneau. */
   scrimClassName?: string
+  /**
+   * Reçoit la fermeture animée. Les modales montées avec `open` en dur et qui se
+   * referment elles-mêmes (envoi réussi) doivent appeler `closeRef.current?.()`
+   * plutôt que leur `onClose` : sinon leur hôte les démonte avant que la feuille
+   * ait eu le temps de redescendre. Inutile quand l'hôte pilote un vrai `open` —
+   * la modale voit alors le passage à `false` et joue la sortie toute seule.
+   */
+  closeRef?: RefObject<(() => void) | null>
 }
 
 // DESIGN.md : scrim rgba(16,17,22,.45), contenu blanc radius 20 padding 24,
@@ -32,16 +57,94 @@ export function Modal({
   variant = 'panel',
   className,
   scrimClassName,
+  closeRef,
 }: ModalProps) {
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
+  const reducedMotion = usePrefersReducedMotion()
+
+  // `null` : rien en cours. `self` : la fermeture a été demandée ici, il faudra
+  // prévenir le parent une fois la descente jouée. `parent` : il a déjà basculé
+  // `open`, on ne joue plus que l'animation — le rappeler ferait doublon.
+  const [closing, setClosing] = useState<'self' | 'parent' | null>(null)
+
+  // `onClose` est presque toujours une lambda, recréée à chaque rendu du parent :
+  // la lire dans une ref est ce qui empêche le minuteur de sortie de se relancer
+  // à chaque re-rendu — la feuille ne se démonterait jamais. Même raison pour
+  // `closing`, qui garderait `requestClose` instable.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  const closingRef = useRef(closing)
+  closingRef.current = closing
+
+  const requestClose = useCallback(() => {
+    if (closingRef.current) return
+    // Sans mouvement, la sortie n'a rien à montrer : on ferme sec.
+    if (reducedMotion) {
+      onCloseRef.current()
+      return
+    }
+    setClosing('self')
+  }, [reducedMotion])
+
+  // Lu depuis l'écouteur clavier, qui ne doit pas se réabonner quand `closing`
+  // change : le faire relancerait l'autofocus en pleine fermeture.
+  const requestCloseRef = useRef(requestClose)
+  requestCloseRef.current = requestClose
+
+  useEffect(() => {
+    if (!closeRef) return
+    closeRef.current = requestClose
+    return () => {
+      closeRef.current = null
+    }
+  }, [closeRef, requestClose])
+
+  // Le parent a fermé sans passer par nos affordances (envoi réussi, changement
+  // d'écran) : on garde la feuille à l'écran le temps de la faire redescendre.
+  const wasOpen = useRef(open)
+  useEffect(() => {
+    if (open) {
+      wasOpen.current = true
+      setClosing(null)
+      return
+    }
+    if (!wasOpen.current) return
+    wasOpen.current = false
+    setClosing(reducedMotion ? null : 'parent')
+  }, [open, reducedMotion])
+
+  useEffect(() => {
+    if (!closing) return
+    const id = setTimeout(() => {
+      setClosing(null)
+      if (closing === 'self') {
+        // Avant `onClose`, sinon le passage de `open` à `false` qu'il provoque
+        // relancerait une sortie « parent » et la feuille remonterait.
+        wasOpen.current = false
+        onCloseRef.current()
+      }
+    }, EXIT_MS)
+    return () => clearTimeout(id)
+  }, [closing])
+
+  // Le verrou de défilement suit la présence à l'écran, pas `open` : sans ça la
+  // page reprendrait sa main derrière une feuille encore en train de descendre.
+  useEffect(() => {
+    if (!open && !closing) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [open, closing])
 
   useEffect(() => {
     if (!open) return
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        onClose()
+        requestCloseRef.current()
         return
       }
       if (e.key !== 'Tab') return
@@ -71,26 +174,21 @@ export function Modal({
       panelRef.current?.querySelector<HTMLElement>('button, input')
     target?.focus()
 
-    // La feuille mobile occupe tout l'écran : sans ce verrou, le doigt fait
-    // défiler la page derrière elle une fois arrivé en bout de panneau.
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
     return () => {
       document.removeEventListener('keydown', onKeyDown)
-      document.body.style.overflow = previousOverflow
     }
-  }, [open, onClose])
+  }, [open])
 
-  if (!open) return null
+  if (!open && !closing) return null
 
   return (
     <div
       className={cn(
-        'animate-fade-in fixed inset-0 z-50 flex items-end justify-center bg-[rgb(16_17_22/0.45)] sm:items-start sm:pt-30',
+        'fixed inset-0 z-50 flex items-end justify-center bg-[rgb(16_17_22/0.45)] sm:items-start sm:pt-30',
+        closing ? 'animate-scrim-out' : 'animate-fade-in',
         scrimClassName,
       )}
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
         ref={panelRef}
@@ -108,21 +206,50 @@ export function Modal({
           variant === 'sheet'
             ? // Feuille pleine hauteur en mobile ; le panneau desktop reprend
               // l'entrée classique (les variantes `sm:` gagnent dans la media query).
-              'animate-sheet-up h-full overflow-y-auto sm:h-auto sm:animate-slide-up'
-            : 'animate-slide-up',
+              // `flex flex-col` : c'est ce qui permet à un contenu de pousser son
+              // pied en bas de feuille (`mt-auto`) au lieu de le laisser flotter au
+              // milieu quand le formulaire est court. Le panneau desktop n'a pas de
+              // hauteur imposée, il repasse en bloc.
+              cn(
+                'flex h-full flex-col overflow-y-auto sm:block sm:h-auto',
+                closing
+                  ? 'animate-sheet-down sm:animate-slide-down'
+                  : 'animate-sheet-up sm:animate-slide-up',
+              )
+            : closing
+              ? 'animate-slide-down'
+              : 'animate-slide-up',
+          // Plus rien à cliquer une fois la descente lancée : un second appui
+          // n'a aucun effet utile et déclencherait le focus d'un champ qui part.
+          closing && 'pointer-events-none',
           className,
         )}
       >
-        {/* poignée de feuille, mobile uniquement */}
-        <div className="mx-auto mb-5 h-1 w-9 rounded-sm bg-border sm:hidden" />
+        {/* Poignée de feuille, mobile uniquement — et raccourci de fermeture : en
+            variant `sheet` le panneau couvre tout l'écran, il ne reste aucun scrim
+            à toucher. `aria-hidden` parce que c'est un doublon tactile du ✕, qui
+            reste le contrôle accessible : annoncer un bouton qu'aucun clavier ne
+            peut atteindre serait pire que de le taire. La barre visible fait 4 px ;
+            c'est la bande autour d'elle qui reçoit le doigt, d'où les marges
+            négatives qui la font déborder du padding du panneau. */}
+        <div
+          aria-hidden
+          onClick={requestClose}
+          className="-mx-6 -mt-6 mb-1 flex shrink-0 cursor-pointer justify-center px-6 pt-6 pb-4 sm:hidden"
+        >
+          <span className="h-1 w-9 rounded-sm bg-border" />
+        </div>
 
-        <div className="mb-1.5 flex items-baseline justify-between gap-4">
+        {/* En mobile le ✕ fait 28 px face à un titre de 14,5 px, et l'alignement sur
+            la ligne de base le fait déborder sous elle : 6 px de marge et le premier
+            champ vient le frôler. Le panneau desktop, lui, garde la maquette. */}
+        <div className="mb-4 flex shrink-0 items-baseline justify-between gap-4 sm:mb-1.5">
           <h2 id={titleId} className="text-card font-semibold">
             {title}
           </h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Fermer"
             className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-sm bg-field text-ink-2 transition-colors duration-150 hover:bg-border-strong focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none"
           >
@@ -132,7 +259,9 @@ export function Modal({
 
         {children}
 
-        {footer && <div className="mt-5 border-t border-surface-subtle pt-4">{footer}</div>}
+        {footer && (
+          <div className="mt-5 shrink-0 border-t border-surface-subtle pt-4">{footer}</div>
+        )}
       </div>
     </div>
   )

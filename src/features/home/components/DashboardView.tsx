@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { EyeIcon } from '../../../components/icons/EyeIcon'
 import { EyeOffIcon } from '../../../components/icons/EyeOffIcon'
 import { GearIcon } from '../../../components/icons/GearIcon'
@@ -32,10 +33,12 @@ import { ObjectiveCard } from '../../../components/objectives/ObjectiveCard'
 import { ObjectiveSlotsEmpty } from './ObjectiveSlotsEmpty'
 import { OverdueCard } from './OverdueCard'
 import { QuarterActivity } from './QuarterActivity'
+import { useTopBarSlot } from '../../../components/layout/topBarSlot'
 import { useDashboardPrefs } from '../useDashboardPrefs'
 
 export function DashboardView() {
   const { prefs, togglePref } = useDashboardPrefs()
+  const topBarSlot = useTopBarSlot()
   const [settingsOpen, setSettingsOpen] = useState(false)
   // La modale de création est montée globalement : on l'ouvre sans quitter l'accueil.
   const { openNewTask } = useNewTask()
@@ -214,7 +217,11 @@ export function DashboardView() {
     <div className="flex flex-col gap-5">
       <h1 className="sr-only">Dashboard</h1>
 
-      <div className="flex justify-end gap-2.5">
+      {/* Sous `lg`, ces deux réglages remontent dans la barre mobile (portail
+          ci-dessous) et « Nouvelle tâche » disparaît : le bouton flottant de la
+          barre d'onglets fait déjà le travail. La rangée entière s'efface, ce qui
+          rend une pleine ligne à l'écran. */}
+      <div className="hidden justify-end gap-2.5 lg:flex">
         <button
           type="button"
           onClick={() => togglePref('privacy')}
@@ -247,6 +254,43 @@ export function DashboardView() {
           Nouvelle tâche
         </Button>
       </div>
+
+      {/* Mêmes réglages, rendus dans la barre mobile à côté de la déconnexion.
+          Ils s'alignent sur son bouton — icône nue, pas de cartouche bordée. */}
+      {topBarSlot &&
+        createPortal(
+          <>
+            <button
+              type="button"
+              onClick={() => togglePref('privacy')}
+              aria-pressed={prefs.privacy}
+              aria-label="Masquer les objectifs"
+              title="Masquer les objectifs"
+              className={cn(
+                'flex size-8 cursor-pointer items-center justify-center rounded-sm transition-colors duration-150',
+                'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
+                prefs.privacy ? 'bg-primary-soft text-primary' : 'text-ink-muted hover:text-primary',
+              )}
+            >
+              {prefs.privacy ? (
+                <EyeOffIcon className="size-4" />
+              ) : (
+                <EyeIcon className="size-4" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Paramétrer le dashboard"
+              title="Paramétrer le dashboard"
+              className="flex size-8 cursor-pointer items-center justify-center rounded-sm text-ink-muted transition-colors duration-150 hover:text-primary focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none"
+            >
+              <GearIcon className="size-4" />
+            </button>
+          </>,
+          topBarSlot,
+        )}
 
       {firstError && (
         <ErrorState

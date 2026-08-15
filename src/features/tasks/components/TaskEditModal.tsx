@@ -56,6 +56,11 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
   const formId = useId()
   const dueTriggerRef = useRef<HTMLButtonElement>(null)
 
+  // Feuille montée avec `open` en dur et démontée par son hôte : sans passer par
+  // `Modal`, « Terminé » la ferait disparaître d'un coup au lieu de la faire
+  // redescendre.
+  const closeRef = useRef<(() => void) | null>(null)
+
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [descriptionOpen, setDescriptionOpen] = useState(false)
@@ -100,7 +105,7 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
   function saveAndClose() {
     commitTitle()
     commitDescription()
-    onClose()
+    ;(closeRef.current ?? onClose)()
   }
 
   /**
@@ -143,6 +148,7 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
       title="Modifier la tâche"
       variant="sheet"
       className="sm:w-[760px]"
+      closeRef={closeRef}
     >
       <form
         id={formId}
@@ -341,7 +347,7 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
                   setConfirmingDelete(true)
                   return
                 }
-                deleteTask.mutate(task.id, { onSuccess: onClose })
+                deleteTask.mutate(task.id, { onSuccess: () => (closeRef.current ?? onClose)() })
               }}
               className={cn(
                 'order-2 flex min-h-12 flex-1 shrink-0 cursor-pointer items-center justify-center rounded-panel px-4.5 text-ui font-medium',

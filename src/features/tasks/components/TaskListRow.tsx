@@ -31,6 +31,9 @@ type TaskListRowProps = {
   grabbed?: boolean
   donePhase?: DonePhase
   reducedMotion?: boolean
+  /** « En retard · Hier » — posé par la section du même nom. La ligne n'affiche
+   *  sinon l'échéance que dans l'infobulle du bouton calendrier. */
+  overdueLabel?: string
   onToggle: (task: Task) => void
   onRename: (task: Task, title: string) => void
   onToggleImportant: (task: Task) => void
@@ -61,6 +64,7 @@ export function TaskListRow({
   grabbed = false,
   donePhase,
   reducedMotion = false,
+  overdueLabel,
   onToggle,
   onRename,
   onToggleImportant,
@@ -213,6 +217,13 @@ export function TaskListRow({
         >
           {task.title}
         </button>
+      )}
+
+      {overdueLabel && (
+        <span className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-danger">
+          <CalendarIcon className="size-3 shrink-0" />
+          {overdueLabel}
+        </span>
       )}
 
       <button

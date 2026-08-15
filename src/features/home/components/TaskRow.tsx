@@ -44,8 +44,9 @@ export function TaskRow({
   return (
     <div
       className={cn(
-        // Métriques de la maquette : gap et padding vertical à 13 px.
-        'flex items-center gap-[13px] py-[13px] pr-2.5',
+        // Métriques de la maquette : gap et padding vertical à 13 px en desktop.
+        // En mobile, la ligne suit l'échelle de l'écran Tâches (OverdueSection).
+        'flex items-center gap-2.5 py-2.5 pr-2.5 lg:gap-[13px] lg:py-[13px]',
         !last && 'border-b border-surface-subtle',
         linked ? 'border-l-[3px] pl-3.5' : 'pl-[17px]',
         !reducedMotion && donePhase === 1 && 'animate-row-flash',
@@ -68,32 +69,45 @@ export function TaskRow({
         onToggle={() => onToggle(task)}
       />
 
-      <span
-        className={cn(
-          'min-w-0 flex-1 truncate text-[13px] transition-colors duration-300',
-          done ? 'text-ink-muted line-through' : 'text-ink',
-        )}
-      >
-        {task.title}
-      </span>
+      {/* Titre et méta empilés en mobile, remis sur une seule ligne en desktop :
+          le bloc de méta ne rétrécit pas, il pousserait sinon la carte au-delà
+          du viewport. Même parti que `OverdueSection` sur l'écran Tâches. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5 lg:flex-row lg:items-center lg:gap-[13px]">
+        <span
+          className={cn(
+            'w-full min-w-0 truncate text-[12.5px] transition-colors duration-300 lg:flex-1 lg:text-[13px]',
+            done ? 'text-ink-muted line-through' : 'text-ink',
+          )}
+        >
+          {task.title}
+        </span>
 
-      <div className="flex shrink-0 items-center gap-2">
-        {list && <ListPill name={list.name} color={list.color} size="sm" />}
-        {task.recurrence != null && (
-          <span className="text-[16px] text-ink-muted" title="Tâche récurrente" aria-hidden="true">
-            ↻
-          </span>
-        )}
-        {task.is_important && (
-          <span className="text-[16px] text-danger" title="Important" aria-hidden="true">
-            ⚑
-          </span>
-        )}
-        {showDueDate && task.due_date && (
-          <span className="text-caption font-semibold text-danger">
-            {formatShortDate(task.due_date)}
-          </span>
-        )}
+        <div className="flex min-w-0 items-center gap-2 lg:shrink-0">
+          {list && <ListPill name={list.name} color={list.color} size="sm" />}
+          {task.recurrence != null && (
+            <span
+              className="shrink-0 text-[14px] text-ink-muted lg:text-[16px]"
+              title="Tâche récurrente"
+              aria-hidden="true"
+            >
+              ↻
+            </span>
+          )}
+          {task.is_important && (
+            <span
+              className="shrink-0 text-[14px] text-danger lg:text-[16px]"
+              title="Important"
+              aria-hidden="true"
+            >
+              ⚑
+            </span>
+          )}
+          {showDueDate && task.due_date && (
+            <span className="shrink-0 text-caption font-semibold text-danger">
+              {formatShortDate(task.due_date)}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )

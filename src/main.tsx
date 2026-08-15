@@ -7,6 +7,14 @@ import { AuthProvider } from './features/auth/AuthProvider'
 import App from './App.tsx'
 import './index.css'
 
+// Safari ignore `user-scalable=no` en onglet : le pincement ne se coupe que par ses
+// événements de geste propriétaires. `{ passive: false }` est indispensable — sans lui
+// le `preventDefault()` est ignoré. Sans effet ailleurs : aucun autre moteur n'émet
+// `gesture*`.
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (event) => event.preventDefault(), { passive: false })
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

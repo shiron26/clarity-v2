@@ -12,10 +12,11 @@ import type { IsoDate } from '../../../lib/appDate'
 // les confettis, puis le texte et le lien apparaissent en décalé.
 const STEP_ARRIVE_MS = 550
 const STEP_LIGHT_MS = 1750
-const POP_END_MS = 2900
+// 1250 ms de pop, la durée exacte de `colorReveal` dans `animate-card-lit` : en
+// deçà, la montée en couleur serait coupée avant sa fin.
+const POP_END_MS = STEP_LIGHT_MS + 1250
 const CLOSE_MS = 430
 
-const DESATURATED = 'grayscale(1) brightness(.94) saturate(0) contrast(.94) opacity(.72)'
 const CONFETTI_COUNT = 36
 const EXTRA_COLORS = ['#ffd43b', '#ffffff']
 
@@ -143,6 +144,11 @@ export function ObjectiveCelebration({
           />
         ))}
 
+      {/* La désaturation et l'allumage sont l'affaire de la carte, pas du
+          conteneur : `lit` + `popping` rejouent ici exactement ce qui se passe
+          quand on coche une tâche reliée à un objectif — tressaillement, montée
+          en couleur (`colorReveal`) et gerbe. Un filtre posé sur ce wrapper
+          basculerait d'un coup, sans transition. */}
       <div
         onClick={(e) => e.stopPropagation()}
         className={cn(
@@ -150,7 +156,6 @@ export function ObjectiveCelebration({
           step === 0 && 'opacity-0',
           step > 0 && !reducedMotion && 'animate-card-arrive',
         )}
-        style={{ filter: revealed ? undefined : DESATURATED }}
       >
         <ObjectiveCard
           objective={objective}
@@ -160,7 +165,8 @@ export function ObjectiveCelebration({
           daysOfWeek={weekDays}
           today={today}
           showMilestones
-          className={cn(popping && 'animate-obj-pop')}
+          lit={revealed}
+          popping={popping}
         />
       </div>
 

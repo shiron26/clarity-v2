@@ -30,7 +30,7 @@ export function FocusTodayCard({
   reducedMotion,
 }: FocusTodayCardProps) {
   return (
-    <section className="rounded-2xl bg-surface p-5 shadow-card">
+    <section className="min-w-0 rounded-2xl bg-surface p-5 shadow-card">
       <div className="mb-2.5 flex items-baseline justify-between">
         <h2 className="text-card font-semibold">Focus du jour</h2>
         <Link

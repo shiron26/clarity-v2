@@ -320,15 +320,32 @@ export function TasksView() {
   // doit donner l'état vide, pas une carte blanche.
   const emptyList = bucketed.length === 0 && overdueTasks.length === 0
 
+  // Les actions d'une ligne, en un seul endroit : la section « en retard » et la
+  // liste principale rendent les mêmes composants, elles doivent réagir pareil —
+  // les écrire deux fois, c'est n'en faire évoluer qu'une.
+  const rowActions = {
+    lists,
+    today: anchor,
+    reducedMotion,
+    onToggle: handleToggle,
+    onRename: (t: Task, value: string) => updateTask.mutate({ id: t.id, edits: { title: value } }),
+    onToggleImportant: (t: Task) =>
+      updateTask.mutate({ id: t.id, edits: { is_important: !t.is_important } }),
+    onPickList: (t: Task, value: string | null) =>
+      updateTask.mutate({ id: t.id, edits: { list_id: value } }),
+    onPickDue: (t: Task, value: IsoDate | null) =>
+      updateTask.mutate({ id: t.id, edits: { due_date: value } }),
+    onOpen: (t: Task) => setEditingId(t.id),
+    onDelete: (t: Task) => deleteTask.mutate(t.id),
+  }
+
   const overdueProps = {
     tasks: overdueTasks,
-    today: anchor,
     objectiveSlotOf,
-    onToggle: handleToggle,
+    listById,
     onPostponeAll: () => postponeOverdue.mutate(),
     postponing: postponeOverdue.isPending,
     donePhaseFor,
-    reducedMotion,
   }
   const doneProps = { tasks: doneTasks, objectiveSlotOf, onToggle: handleToggle }
 
@@ -405,7 +422,7 @@ export function TasksView() {
         {/* Le retard vit désormais dans la carte aux deux largeurs (maquette v2). */}
         {overdueTasks.length > 0 && (
           <>
-            <OverdueSection {...overdueProps} />
+            <OverdueSection {...overdueProps} {...rowActions} />
             <div className="my-3 h-px bg-border lg:my-4" />
           </>
         )}
@@ -438,31 +455,14 @@ export function TasksView() {
                       </li>
                     )}
                     <TaskListRow
+                      {...rowActions}
                       task={task}
                       objectiveSlot={objectiveSlotOf(task)}
                       list={task.list_id ? listById.get(task.list_id) : undefined}
-                      lists={lists}
-                      today={anchor}
                       canDrag={canDrag}
                       dragging={drag.dragId === task.id}
                       grabbed={drag.grabbedId === task.id}
                       donePhase={donePhaseFor(task.id)}
-                      reducedMotion={reducedMotion}
-                      onToggle={handleToggle}
-                      onRename={(t, value) =>
-                        updateTask.mutate({ id: t.id, edits: { title: value } })
-                      }
-                      onToggleImportant={(t) =>
-                        updateTask.mutate({ id: t.id, edits: { is_important: !t.is_important } })
-                      }
-                      onPickList={(t, value) =>
-                        updateTask.mutate({ id: t.id, edits: { list_id: value } })
-                      }
-                      onPickDue={(t, value) =>
-                        updateTask.mutate({ id: t.id, edits: { due_date: value } })
-                      }
-                      onOpen={(t) => setEditingId(t.id)}
-                      onDelete={(t) => deleteTask.mutate(t.id)}
                       onGripPointerDown={drag.onGripPointerDown}
                       onGripKeyDown={drag.onGripKeyDown}
                     />
