@@ -1,7 +1,12 @@
 import { ObjectiveCard } from '../ObjectiveCard'
 import { usePrefersReducedMotion } from '../../../hooks/usePrefersReducedMotion'
 import { daysOfWeek as weekOf, type IsoDate } from '../../../lib/appDate'
-import { draftMilestones, parseAmount, type ObjectiveDraft } from '../../../lib/objectiveDraft'
+import {
+  directionOf,
+  draftMilestones,
+  parseAmount,
+  type ObjectiveDraft,
+} from '../../../lib/objectiveDraft'
 import type { Milestone } from '../../../hooks/useMilestones'
 import type { Objective } from '../../../hooks/useObjectives'
 
@@ -118,6 +123,12 @@ function caption(draft: ObjectiveDraft): string {
 function previewObjective(draft: ObjectiveDraft, slot: number, cadence: number): Objective {
   const habit = draft.measure === 'habitude'
   const quantity = draft.measure === 'quantite'
+  const target = parseAmount(draft.targetValue)
+  // Le même point de départ que celui de la carte (voir `value` plus haut) : sans
+  // lui, la barre de l'aperçu se remplirait autrement que celle de l'objectif
+  // créé une seconde plus tard.
+  const start =
+    quantity && draft.entryMode === 'releve' ? (parseAmount(draft.startValue) ?? 0) : 0
 
   return {
     // Ces sept champs existent dans le type mais ne sont jamais lus par la
@@ -145,10 +156,11 @@ function previewObjective(draft: ObjectiveDraft, slot: number, cadence: number):
     cadence: habit ? cadence : null,
     // Sur une habitude, la cible totale ne s'affiche pas : le rythme est le seul
     // indicateur de la carte.
-    target_value: quantity ? parseAmount(draft.targetValue) : null,
+    target_value: quantity ? target : null,
     unit: quantity && draft.unit !== '' ? draft.unit : null,
     entry_mode: quantity ? draft.entryMode : null,
-    direction: quantity ? 'atteindre' : null,
+    direction: quantity ? directionOf(start, target) : null,
+    start_value: quantity ? start : null,
     closed_at: null,
   }
 }

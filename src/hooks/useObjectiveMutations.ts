@@ -38,8 +38,16 @@ export type NewObjective = {
   unit: string | null
   /** Quantité seulement : le relevé remplace, le cumul additionne. */
   entryMode: 'cumul' | 'releve' | null
-  /** Quantité seulement. Figée à « atteindre » tant qu'aucun écran ne l'expose. */
+  /**
+   * Quantité seulement, et jamais choisie à la main : déduite du point de départ
+   * face à la cible (`directionOf`, `src/lib/objectiveDraft.ts`).
+   */
   direction: 'atteindre' | 'sous' | null
+  /**
+   * Quantité seulement : l'origine de l'échelle de progression. 0 pour un cumul,
+   * la valeur du jour pour un relevé. Le serveur la fige après création.
+   */
+  startValue: number | null
 }
 
 /**
@@ -59,6 +67,11 @@ export type ObjectiveEdits = {
   /** La cible bouge : c'est tout l'objet de l'ajustement de rythme (§9). */
   targetValue: number | null
   unit: string | null
+  /**
+   * Recalculée à chaque écriture, jamais recopiée : déplacer la cible de 70 à
+   * 85 kg quand on part de 78 retourne le sens de l'objectif. Le point de départ,
+   * lui, est figé côté serveur et n'est pas renvoyé.
+   */
   direction: 'atteindre' | 'sous' | null
 }
 
@@ -92,6 +105,7 @@ export function useCreateObjective() {
         unit: input.unit,
         entry_mode: input.entryMode,
         direction: input.direction,
+        start_value: input.startValue,
       })
         .select('id')
         .single()

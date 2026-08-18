@@ -11,6 +11,7 @@ import {
   type IsoDate,
 } from '../../lib/appDate'
 import { periodsLeft, windowEnd } from '../../lib/objectiveFeasibility'
+import { quantityPercent, targetPercent } from '../../lib/objectiveState'
 import { cadenceLabel, formatQuantity } from '../../lib/objectiveWording'
 import type { ObjectiveProjection } from '../../lib/objectiveProjection'
 import type { Milestone } from '../../hooks/useMilestones'
@@ -160,7 +161,7 @@ export function heroContent(input: HeroInput): HeroContent {
       value,
       of: formatQuantity(target, objective.unit),
       suffix: null,
-      percent: percentOf(input.quantityValue, target),
+      percent: quantityPercent(objective, input.quantityValue),
       projection,
     }
   }
@@ -173,7 +174,7 @@ export function heroContent(input: HeroInput): HeroContent {
       value: String(done),
       of: bare ? null : `${milestones.length} étape${milestones.length > 1 ? 's' : ''}`,
       suffix: bare ? `étape${done > 1 ? 's' : ''} franchie${done > 1 ? 's' : ''}` : null,
-      percent: bare ? null : percentOf(done, milestones.length),
+      percent: bare ? null : targetPercent(done, milestones.length),
       projection,
     }
   }
@@ -200,13 +201,7 @@ export function heroContent(input: HeroInput): HeroContent {
     value: String(done),
     of: `${formatQuantity(target, null)} séances`,
     suffix: null,
-    percent: percentOf(done, target),
+    percent: targetPercent(done, target),
     projection,
   }
-}
-
-/** Part accomplie, bornée à 100 : une barre ne déborde pas de son rail. */
-function percentOf(value: number, target: number): number | null {
-  if (target <= 0) return null
-  return Math.min(100, Math.round((value / target) * 100))
 }

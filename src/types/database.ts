@@ -317,6 +317,7 @@ export type Database = {
           quarter: number | null
           slot: number | null
           space_id: string | null
+          start_value: number | null
           target_value: number | null
           title: string | null
           unit: string | null
@@ -447,6 +448,7 @@ export type Database = {
           quarter: number
           slot: number
           space_id: string
+          start_value: number
           target_value: number
           title: string
           unit: string

@@ -73,6 +73,11 @@ function heldLabel(objective: Objective, rows: ObjectivePeriod[]): string {
  * **relevé** remplace la valeur précédente — son apport, c'est l'écart entre la
  * dernière saisie du trimestre et la dernière saisie qui le précède. Un relevé
  * peut baisser (un solde bancaire baisse) : le signe est porté tel quel.
+ *
+ * Quand **rien ne précède le trimestre**, la référence est le point de départ de
+ * l'objectif (`start_value`), pas zéro. La différence ne se voyait pas tant que
+ * tous les relevés partaient de zéro ; sur « descendre à 70 kg », partie de
+ * 78 kg, le premier trimestre annonçait « + 75 kg » au lieu de « − 3 kg ».
  */
 function quantityValue(
   objective: Objective,
@@ -94,7 +99,8 @@ function quantityValue(
   }
 
   const before = own.filter((e) => e.entry_date < range.from).at(-1)
-  return { value: inside.at(-1)!.value - (before?.value ?? 0), count: inside.length, total }
+  const baseline = before?.value ?? objective.start_value ?? 0
+  return { value: inside.at(-1)!.value - baseline, count: inside.length, total }
 }
 
 /** « + 1 650 € » — le signe rend l'apport lisible, y compris quand il est négatif. */

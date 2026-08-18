@@ -13,6 +13,7 @@ import { useUpdateObjective } from '../../../hooks/useObjectiveMutations'
 import { dataErrorMessage } from '../../../lib/errorMessage'
 import { objectiveIdentityLine } from '../../../lib/objectiveWording'
 import {
+  directionOf,
   draftFromObjective,
   emptyDraft,
   isScopeReady,
@@ -85,7 +86,13 @@ export function ObjectiveEditModal({ open, onClose, objective }: ObjectiveEditMo
           cadence: draft.measure === 'habitude' ? draft.cadence : null,
           targetValue: draft.measure === 'jalons' ? null : parseAmount(draft.targetValue),
           unit: draft.measure === 'quantite' && draft.unit !== '' ? draft.unit : null,
-          direction: objective.direction,
+          // Recalculée, pas recopiée : la cible est modifiable, donc bouger de 70
+          // à 85 kg quand on part de 78 retourne le sens de l'objectif. Même
+          // déduction qu'à la création — le point de départ, lui, est figé.
+          direction:
+            draft.measure === 'quantite'
+              ? directionOf(objective.start_value ?? 0, parseAmount(draft.targetValue))
+              : null,
         },
       },
       { onSuccess: onClose },

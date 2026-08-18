@@ -101,6 +101,61 @@ export function regularityPercent(done: number, target: number): number | null {
 }
 
 /**
+ * Part accomplie d'un décompte qui part de zéro — des séances faites sur une
+ * cible totale, des étapes franchies sur les étapes posées.
+ *
+ * Bornée **des deux côtés**, et la borne basse n'est pas décorative : une
+ * largeur CSS négative est ignorée, la barre resterait vide sans que rien ne
+ * dise pourquoi.
+ */
+export function targetPercent(done: number, target: number): number | null {
+  if (target <= 0) return null
+  return clampPercent((done / target) * 100)
+}
+
+/**
+ * Part accomplie d'un objectif quantifié — et c'est la seule des deux qui a un
+ * SENS et une ORIGINE.
+ *
+ * Le produit a longtemps lu la progression d'une quantité comme `valeur / cible`,
+ * c'est-à-dire une montée depuis zéro. Deux hypothèses y étaient enfouies, et
+ * les deux sont fausses dès qu'on relève une valeur plutôt que d'incrémenter :
+ *
+ * - **le sens.** « Perdre du poids », 78 kg vers 70, donnait 111 % — borné à
+ *   100, donc « cible atteinte » le jour de la création. C'est exactement ce que
+ *   `direction` décrit, et elle n'était lue nulle part.
+ * - **l'origine.** Même à la hausse, un relevé qui part de 82 kg vers 90
+ *   démarrait à 91 % sans que rien n'ait été fait. La progression d'un relevé se
+ *   mesure sur la distance `départ → cible`, pas sur la cible seule.
+ *
+ * Un cumul part de 0 en `'atteindre'` : la formule s'y réduit à `valeur / cible`,
+ * ce que l'existant affichait déjà.
+ *
+ * `null` quand il n'y a **rien à parcourir** (départ égal à la cible, ou du
+ * mauvais côté) : la barre disparaît alors plutôt que d'afficher un 0 % ou un
+ * 100 % qui ne veulent rien dire.
+ */
+export function quantityPercent(
+  objective: Pick<Objective, 'direction' | 'target_value' | 'start_value'>,
+  value: number,
+): number | null {
+  const target = objective.target_value
+  if (target === null) return null
+  const start = objective.start_value ?? 0
+  const down = objective.direction === 'sous'
+
+  const span = down ? start - target : target - start
+  if (span <= 0) return null
+  const done = down ? start - value : value - start
+  return clampPercent((done / span) * 100)
+}
+
+/** 0 à 100, entier : une barre ne déborde de son rail ni d'un côté ni de l'autre. */
+function clampPercent(percent: number): number {
+  return Math.min(100, Math.max(0, Math.round(percent)))
+}
+
+/**
  * Les secondaires en dernier — l'ordre de tous les tableaux et frises du produit.
  *
  * `sort` est stable : l'ordre que `useObjectives` a déjà établi tient à

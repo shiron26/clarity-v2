@@ -77,12 +77,21 @@ Le détail vit dans les commentaires des migrations (`supabase/migrations/`). R�
   « erreur de notre côté ». Le verrou consultatif de l'attribution garde l'année comme
   clé, et c'est correct : les bornes étant `[début, fin)`, deux fenêtres ne peuvent se
   chevaucher que dans la même année.
-- **`measure`, `period_unit`, `entry_mode` et `quarter` sont figés après création**, au
-  même titre que `year`, `kind` et `slot` : changer l'unité de période orphelinerait
-  l'historique d'`objective_period`, et basculer cumul → relevé changerait
-  rétroactivement le sens des saisies passées. Changer de nature, c'est supprimer et
+- **`measure`, `period_unit`, `entry_mode`, `start_value` et `quarter` sont figés après
+  création**, au même titre que `year`, `kind` et `slot` : changer l'unité de période
+  orphelinerait l'historique d'`objective_period`, basculer cumul → relevé changerait
+  rétroactivement le sens des saisies passées, et déplacer le point de départ
+  ré-échelonnerait tous les pourcentages déjà lus. Changer de nature, c'est supprimer et
   recréer — le DELETE reste libre. Restent modifiables : le contenu, `cadence`
   (l'ajustement de rythme en dépend), `target_value`, `unit`, `direction`, `closed_at`.
+- **Le sens d'une quantité (`direction`) se déduit, il ne se demande pas** : un point de
+  départ au-dessus de la cible est un objectif à la baisse. Une seule définition côté
+  front, `directionOf()` (`src/lib/objectiveDraft.ts`), appelée à la création comme à
+  l'édition — la cible étant modifiable, la faire passer de 70 à 85 kg quand on part de 78
+  retourne le sens, et `direction` doit suivre. Le pourcentage, lui, se calcule **toujours**
+  par `quantityPercent()` (`src/lib/objectiveState.ts`) : la formule naïve `valeur / cible`
+  suppose une montée depuis zéro, et elle affichait « cible atteinte » sur un objectif de
+  perte de poids le jour de sa création.
 - **Les contraintes en `CASE` se réécrivent, elles ne se complètent pas** : la branche
   `else` avale toute valeur non listée, donc ajouter une valeur de `kind` ou de
   `measure` casse la forme en silence.

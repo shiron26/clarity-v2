@@ -204,7 +204,9 @@ function previewObjective(
     target_value: example.targetValue,
     unit: example.unit,
     entry_mode: quantity ? 'releve' : null,
+    // L'exemple monte : il illustre la FORME d'une carte, pas un sens de cible.
     direction: quantity ? 'atteindre' : null,
+    start_value: quantity ? 0 : null,
     closed_at: null,
   }
 }

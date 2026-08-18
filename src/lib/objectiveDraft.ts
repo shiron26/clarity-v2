@@ -191,9 +191,15 @@ function draftErrors(draft: ObjectiveDraft): DraftErrors {
   if (draft.measure === 'quantite') {
     const target = parseAmount(draft.targetValue)
     if (target === null || target <= 0) errors.targetValue = 'Indiquez la valeur à atteindre.'
-    if (draft.entryMode === 'releve' && draft.startValue.trim() !== '') {
-      if (parseAmount(draft.startValue) === null) {
-        errors.startValue = 'Indiquez un nombre, ou laissez vide.'
+    // Le point de départ n'est plus facultatif en mode relevé : il porte le SENS
+    // de la cible autant que sa valeur (`directionOf`). Vide, il vaudrait zéro,
+    // et « perdre du poids » se lirait comme une prise de poids.
+    if (draft.entryMode === 'releve') {
+      const start = parseAmount(draft.startValue)
+      if (start === null) {
+        errors.startValue = 'Indiquez où vous en êtes aujourd’hui.'
+      } else if (target !== null && start === target) {
+        errors.startValue = 'Votre point de départ et votre cible sont identiques.'
       }
     }
     // Pas de règle sur la longueur de l'unité : `MAX_UNIT_LENGTH` est un plafond
@@ -278,6 +284,9 @@ export function toNewObjective(
   const habit = draft.measure === 'habitude'
   const quantity = draft.measure === 'quantite'
   const target = parseAmount(draft.targetValue)
+  // Un cumul part de zéro par définition : la question du point de départ ne lui
+  // est pas posée, et il n'a donc rien à envoyer d'autre.
+  const start = quantity && draft.entryMode === 'releve' ? (parseAmount(draft.startValue) ?? 0) : 0
 
   return {
     userId: context.userId,
@@ -298,10 +307,23 @@ export function toNewObjective(
     // d'unité à choisir, et surtout pas à stocker.
     unit: quantity && draft.unit !== '' ? draft.unit : null,
     entryMode: quantity ? draft.entryMode : null,
-    // `direction` porte les objectifs de seuil (« rester sous »). Le modèle la
-    // connaît, aucun écran ne l'expose encore : figée à « atteindre ».
-    direction: quantity ? 'atteindre' : null,
+    direction: quantity ? directionOf(start, target) : null,
+    startValue: quantity ? start : null,
   }
+}
+
+/**
+ * Le sens d'une cible, **déduit et jamais demandé** : un point de départ au-dessus
+ * de la cible est une cible à la baisse (perdre du poids, éteindre une dette),
+ * en dessous une cible à la hausse.
+ *
+ * Une seule définition, appelée à la création comme à l'édition. Modifier la
+ * cible peut retourner le sens (passer de 70 à 85 kg quand on part de 78), et
+ * deux déductions divergentes laisseraient une barre qui se remplit à l'envers.
+ * Un cumul ne descend pas : il part de zéro, donc `'atteindre'`.
+ */
+export function directionOf(start: number, target: number | null): 'atteindre' | 'sous' {
+  return target !== null && start > target ? 'sous' : 'atteindre'
 }
 
 /**
@@ -325,6 +347,7 @@ export function draftFromObjective(objective: {
   target_value: number | null
   unit: string | null
   entry_mode: EntryMode | null
+  start_value: number | null
 }): ObjectiveDraft {
   const base = emptyDraft(objective.kind === 'secondaire' ? 'secondaire' : 'principal')
   return {
@@ -340,7 +363,9 @@ export function draftFromObjective(objective: {
     targetValue: objective.target_value === null ? '' : String(objective.target_value),
     unit: objective.unit ?? '',
     entryMode: objective.entry_mode ?? base.entryMode,
-    startValue: '',
+    // Repris et non vidé : c'est lui qui donne son sens à la cible, et l'édition
+    // recalcule `direction` avec (`directionOf`).
+    startValue: objective.start_value === null ? '' : String(objective.start_value),
     milestones: base.milestones,
   }
 }

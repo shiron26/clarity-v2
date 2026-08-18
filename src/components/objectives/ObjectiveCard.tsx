@@ -7,6 +7,7 @@ import type { Objective } from '../../hooks/useObjectives'
 import type { ObjectivePeriod } from '../../hooks/useObjectivePeriods'
 import type { ObjectiveProgress } from '../../hooks/useObjectiveProgress'
 import { maskTitle, objectiveSkin } from '../../lib/objectivePalette'
+import { quantityPercent } from '../../lib/objectiveState'
 import { formatQuantity, periodLabel } from '../../lib/objectiveWording'
 
 /**
@@ -208,8 +209,9 @@ function FullVisual(props: VisualProps) {
 
   if (objective.measure === 'quantite') {
     const value = progress?.value ?? 0
-    const target = objective.target_value
-    const pct = target && target > 0 ? Math.min(100, Math.round((value / target) * 100)) : 0
+    // Le sens et le point de départ vivent dans `quantityPercent` : une cible à
+    // la baisse se remplit en descendant, et un relevé ne part pas de zéro.
+    const pct = quantityPercent(objective, value) ?? 0
     return (
       <div className="flex w-full flex-col items-center gap-2.5">
         {/* Une unité est un suffixe court (« € », « km »), mais elle peut être
@@ -221,7 +223,7 @@ function FullVisual(props: VisualProps) {
         <span className="max-w-full text-center text-[21px] leading-tight font-semibold break-words">
           {formatQuantity(value, objective.unit)}
           <span className="ml-1 text-[11px] font-normal text-white/72">
-            sur {formatQuantity(target, objective.unit)}
+            sur {formatQuantity(objective.target_value, objective.unit)}
           </span>
         </span>
         <QuantityBar percent={pct} />

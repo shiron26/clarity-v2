@@ -61,14 +61,18 @@ export function useCreateObjectiveFully() {
       }
 
       // Le point de départ n'existe qu'en mode relevé — en cumul on part de 0 et
-      // l'écran ne pose pas la question. Le modèle n'a pas de colonne pour cette
-      // valeur : la conserver, c'est en faire le premier relevé. `entry_date`
-      // n'est jamais envoyée, le serveur la pose au jour applicatif.
+      // l'écran ne pose pas la question. Il est écrit DEUX FOIS, et ce n'est pas
+      // un doublon : `objective.start_value` est l'origine figée de l'échelle de
+      // progression, ce premier `objective_entry` est la valeur du jour, qui va
+      // bouger. Sans la saisie, l'objectif s'afficherait à 0 kg ; sans la
+      // colonne, la barre repartirait de zéro à chaque relevé corrigé.
+      //
+      // Posée même quand elle vaut 0 : autrement un objectif qui démarre à zéro
+      // n'aurait aucune saisie, et sa valeur affichée serait un défaut, pas un
+      // relevé. `entry_date` n'est jamais envoyée, le serveur la pose au jour
+      // applicatif.
       if (draft.measure === 'quantite' && draft.entryMode === 'releve') {
-        const start = parseAmount(draft.startValue)
-        if (start !== null && start !== 0) {
-          await addEntry.mutateAsync({ objectiveId, value: start })
-        }
+        await addEntry.mutateAsync({ objectiveId, value: parseAmount(draft.startValue) ?? 0 })
       }
 
       return objectiveId

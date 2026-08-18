@@ -70,10 +70,15 @@ function habitPace(input: {
  * prévu » vaudrait donc « ce qu'il faudrait faire », et projeter dessus rendrait
  * invariablement la fin de la fenêtre — une tautologie, pas une projection. Tant
  * qu'on n'a pas vu deux relevés séparés d'une période, on se tait.
+ *
+ * `observedRate` est SIGNÉ : sur une cible à la baisse, perdre du poids donne un
+ * rythme négatif. Le retourner avant de le juger est ce qui distingue « je
+ * progresse » de `stalled` — sans quoi une descente régulière ne se serait
+ * jamais projetée.
  */
-function quantityPace(series: SeriesPoint[], unit: PeriodUnit): Pace | null {
+function quantityPace(series: SeriesPoint[], unit: PeriodUnit, down: boolean): Pace | null {
   const rate = observedRate(series, unit)
-  return rate === null ? null : { perPeriod: rate, basis: 'observed' }
+  return rate === null ? null : { perPeriod: down ? -rate : rate, basis: 'observed' }
 }
 
 /**
@@ -122,13 +127,20 @@ export function projectCompletion(input: ProjectionInput): ObjectiveProjection |
 
   const unit: PeriodUnit = objective.period_unit ?? 'week'
   const habit = objective.measure === 'habitude'
+  // Une habitude se compte en séances : elle ne descend jamais.
+  const down = !habit && objective.direction === 'sous'
 
-  const remaining = target - (habit ? input.totalDone : input.quantityValue)
+  const value = habit ? input.totalDone : input.quantityValue
+  // « Ce qu'il reste à parcourir », toujours orienté dans le sens de l'objectif :
+  // sur une cible à la baisse, c'est la valeur du jour moins la cible. Sans ce
+  // retournement, « descendre à 70 kg » depuis 78 donnait un reste négatif, donc
+  // « Cible atteinte » le jour même de la création.
+  const remaining = down ? value - target : target - value
   if (remaining <= 0) return { status: 'reached' }
 
   const pace = habit
     ? habitPace({ periods: input.periods, unit, today, cadence: objective.cadence ?? 1 })
-    : quantityPace(input.series, unit)
+    : quantityPace(input.series, unit, down)
 
   if (pace === null) return null
   if (pace.perPeriod <= 0) return { status: 'stalled' }

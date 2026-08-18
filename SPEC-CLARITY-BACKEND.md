@@ -142,7 +142,8 @@ objective
   target_value          numeric?   -- en clair, assumé
   unit                  text?      -- libellé d'affichage, null = sans unité
   entry_mode            'cumul' | 'releve' ?   -- quantité seulement
-  direction             'atteindre' | 'sous' ?  -- quantité seulement
+  direction             'atteindre' | 'sous' ?  -- quantité seulement, déduite
+  start_value           numeric?   -- quantité seulement, origine de l'échelle
   closed_at             timestamptz?
   created_by            uuid
 ```
@@ -156,15 +157,33 @@ jamais deux objectifs simultanés de la même couleur (l'identité visuelle vien
 
 **Trois types de mesure**, portés par `measure` :
 
-| | `cadence` | `period_unit` | `target_value` | `entry_mode` |
-|---|---|---|---|---|
-| `habitude` | requis, ≤ 7 si `week` | requis | facultatif | — |
-| `quantite` | — (1 par période) | requis | **requis** | requis |
-| `jalons` | — | — | — | — |
+| | `cadence` | `period_unit` | `target_value` | `entry_mode` | `direction` / `start_value` |
+|---|---|---|---|---|---|
+| `habitude` | requis, ≤ 7 si `week` | requis | facultatif | — | — |
+| `quantite` | — (1 par période) | requis | **requis** | requis | **requis** |
+| `jalons` | — | — | — | — | — |
 
 `habitude` est réservée aux principaux perso et aux forks : un secondaire n'a pas de demande
-périodique, un objectif d'espace n'a pas de rythme propre (§4.2). `measure`, `period_unit` et
-`entry_mode` sont **figés à la création** — changer de nature, c'est supprimer et recréer.
+périodique, un objectif d'espace n'a pas de rythme propre (§4.2). `measure`, `period_unit`,
+`entry_mode` et `start_value` sont **figés à la création** — changer de nature, c'est supprimer
+et recréer.
+
+**Une quantité a un SENS et une ORIGINE**, et les deux sont nécessaires pour que sa
+progression veuille dire quelque chose :
+
+- `start_value` est le point de départ. `0` pour un cumul (il part de zéro par définition), la
+  valeur du jour pour un relevé — la même valeur est aussi posée en premier `objective_entry`,
+  et ce n'est pas un doublon : la colonne est l'origine figée de l'échelle, la saisie est la
+  valeur du jour, qui bouge. La progression se mesure sur la distance `départ → cible`, jamais
+  sur la cible seule.
+- `direction` dit de quel côté on va. Elle n'est **jamais demandée à l'utilisateur** : elle se
+  déduit du point de départ face à la cible — au-dessus, c'est `'sous'` (perdre du poids,
+  éteindre une dette) ; en dessous ou égal, `'atteindre'`. Contrairement à `start_value` elle
+  reste **modifiable**, et elle doit l'être : la cible bouge, et la faire passer de 70 à 85 kg
+  quand on part de 78 retourne le sens de l'objectif. Le client la recalcule à chaque écriture.
+
+Le pourcentage affiché vaut donc `(valeur − départ) / (cible − départ)` à la hausse, et
+`(départ − valeur) / (départ − cible)` à la baisse, borné à `[0, 100]` des deux côtés.
 
 **Trois natures d'objectif**, avec des mécaniques distinctes :
 

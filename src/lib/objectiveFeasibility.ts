@@ -130,19 +130,31 @@ export function habitProjection(input: {
 }
 
 export type QuantityEffort = {
-  /** Ce qu'il reste à parcourir : cible moins point de départ. */
+  /**
+   * Ce qu'il reste à parcourir, **toujours orienté dans le sens de l'objectif** :
+   * positif tant que la cible est devant, négatif ou nul quand elle est déjà
+   * franchie. Une descente compte donc positivement.
+   */
   remaining: number
   /** Le nombre de relevés qu'il reste à faire d'ici la fin de la fenêtre. */
   entriesLeft: number
   unit: PeriodUnit
   /** L'effort par relevé. `null` s'il ne reste aucun relevé, ou si c'est déjà atteint. */
   perEntry: number | null
+  /** La cible est en dessous du point de départ : l'encart doit dire « de moins ». */
+  descending: boolean
 }
 
 /**
  * « Il vous manque 2 150 € et il reste 5 relevés. Soit 430 € par mois. »
  *
  * C'est ce chiffre-là que l'application rappellera — jamais un score.
+ *
+ * Le **sens se déduit ici** et nulle part ailleurs : un point de départ au-dessus
+ * de la cible est une cible à la baisse (perdre du poids, éteindre une dette).
+ * C'est la même déduction que `directionOf` dans `objectiveDraft.ts`, appliquée
+ * aux mêmes deux nombres — l'encart ne peut donc pas annoncer un effort dont le
+ * sens diffère de celui qui sera enregistré.
  */
 export function quantityEffort(input: {
   today: IsoDate
@@ -153,12 +165,14 @@ export function quantityEffort(input: {
   start: number
 }): QuantityEffort {
   const left = periodsLeft(input.unit, input.today, windowEnd(input.year, input.quarter))
-  const remaining = input.target - input.start
+  const descending = input.start > input.target
+  const remaining = descending ? input.start - input.target : input.target - input.start
   return {
     remaining,
     entriesLeft: left,
     unit: input.unit,
     perEntry: left > 0 && remaining > 0 ? remaining / left : null,
+    descending,
   }
 }
 

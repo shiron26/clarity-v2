@@ -24,6 +24,8 @@ declare
   v_space_obj uuid;   -- principal d'espace
   v_secondary uuid;   -- secondaire perso de A
   v_quant uuid;       -- secondaire quantifié mensuel de A
+  v_seuil uuid;       -- quantité à la baisse (« perdre du poids »)
+  v_dir text;
   v_annual uuid;      -- annuel de l'année suivante (tests de fenêtre)
   v_fork_a uuid;
   v_fork_b uuid;
@@ -195,8 +197,8 @@ begin
     raise notice 'OK: cadence bornée à 7 quand la période est la semaine';
   end;
   begin
-    insert into public.objective (user_id, year, kind, label, title, measure, period_unit, entry_mode, direction)
-    values (ua, v_year + 2, 'principal', 'NOTGT', 'quantité sans cible', 'quantite', 'month', 'cumul', 'atteindre');
+    insert into public.objective (user_id, year, kind, label, title, measure, period_unit, entry_mode, direction, start_value)
+    values (ua, v_year + 2, 'principal', 'NOTGT', 'quantité sans cible', 'quantite', 'month', 'cumul', 'atteindre', 0);
     raise exception 'FAIL: quantité sans cible acceptée';
   exception when check_violation then
     raise notice 'OK: target_value obligatoire sur une quantité';
@@ -212,6 +214,54 @@ begin
   insert into public.objective (user_id, year, kind, label, title, measure, period_unit, cadence)
   values (ua, v_year + 2, 'principal', 'CAD8M', 'huit par mois', 'habitude', 'month', 8);
   raise notice 'OK: cadence 8 acceptée quand la période est le mois';
+
+  -- start_value : obligatoire sur une quantité (c'est l'origine de l'échelle de
+  -- progression, sans elle un relevé se lit comme une montée depuis zéro), et
+  -- interdite ailleurs — une habitude se compte en séances, elle part de zéro.
+  begin
+    insert into public.objective (user_id, year, kind, label, title,
+                                  measure, period_unit, target_value, entry_mode, direction)
+    values (ua, v_year + 2, 'principal', 'NOSTART', 'quantité sans départ',
+            'quantite', 'month', 70, 'releve', 'sous');
+    raise exception 'FAIL: quantité sans point de départ acceptée';
+  exception when check_violation then
+    raise notice 'OK: start_value obligatoire sur une quantité';
+  end;
+  begin
+    insert into public.objective (user_id, year, kind, label, title,
+                                  measure, period_unit, cadence, start_value)
+    values (ua, v_year + 2, 'principal', 'HABSTART', 'habitude avec départ',
+            'habitude', 'week', 3, 10);
+    raise exception 'FAIL: point de départ accepté sur une habitude';
+  exception when check_violation then
+    raise notice 'OK: pas de start_value hors quantité';
+  end;
+
+  -- start_value est figée à la création : déplacer l'origine ré-échelonnerait
+  -- rétroactivement toute la progression déjà lue. `direction`, elle, bouge —
+  -- elle se déduit du départ face à la cible, donc changer la cible la retourne.
+  insert into public.objective (user_id, year, kind, label, title,
+                                measure, period_unit, target_value, unit,
+                                entry_mode, direction, start_value)
+  values (ua, v_year + 2, 'principal', 'POIDS', 'Perdre du poids',
+          'quantite', 'month', 70, 'kg', 'releve', 'sous', 78)
+  returning id into v_seuil;
+  begin
+    update public.objective set start_value = 80 where id = v_seuil;
+    raise exception 'FAIL: point de départ déplacé';
+  exception when raise_exception then
+    if sqlerrm like '%objective_identity_immutable%' then
+      raise notice 'OK: start_value figée après création';
+    else raise; end if;
+  end;
+  update public.objective set target_value = 85, direction = 'atteindre' where id = v_seuil;
+  select direction into v_dir from public.objective where id = v_seuil;
+  if v_dir = 'atteindre' then
+    raise notice 'OK: direction suit la cible quand elle se retourne';
+  else
+    raise exception 'FAIL: direction = %', v_dir;
+  end if;
+  delete from public.objective where id = v_seuil;
 
   insert into public.objective (user_id, year, kind, label, title, measure)
   values (ua, v_year, 'secondaire', 'SEC', 'secondaire', 'jalons') returning id into v_secondary;
@@ -752,9 +802,10 @@ begin
   -- secondaire peut porter (il n'a pas de demande périodique, donc pas
   -- d'habitude). Le slot 1 des secondaires est pris par v_secondary.
   insert into public.objective (user_id, year, kind, label, title,
-                                measure, period_unit, target_value, unit, entry_mode, direction)
+                                measure, period_unit, target_value, unit, entry_mode, direction,
+                                start_value)
   values (ua, v_year, 'secondaire', 'EPARGNE', 'Épargner 6 000 €',
-          'quantite', 'month', 6000, '€', 'cumul', 'atteindre')
+          'quantite', 'month', 6000, '€', 'cumul', 'atteindre', 0)
   returning id into v_quant;
 
   -- entry_date est posée par le SERVEUR : la valeur du client n'est pas lue.

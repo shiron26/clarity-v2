@@ -7,7 +7,7 @@ import { SwapIcon } from '../../icons/SwapIcon'
 import { UnitField } from '../../ui/UnitField'
 import { FieldLabel } from '../../ui/FieldLabel'
 import { CustomUnitInput, UnitSelect } from './UnitSelect'
-import { FeasibilityNote, NoteAside } from './FeasibilityNote'
+import { FeasibilityNote, NoteAside, QuietNote } from './FeasibilityNote'
 import { quantityEffort } from '../../../lib/objectiveFeasibility'
 import { formatQuantity } from '../../../lib/objectiveWording'
 import {
@@ -45,8 +45,12 @@ import type { IsoDate } from '../../../lib/appDate'
  * Le point de départ n'existe qu'en mode relevé : en cumul, on part de zéro par
  * définition. Il devient le premier relevé de l'objectif.
  *
- * `direction` (atteindre / rester sous) existe en base mais n'est pas exposée :
- * l'ouvrir suffirait à obtenir les objectifs de seuil, sans nouvelle mécanique.
+ * **Le sens de la cible ne se demande pas, il se lit.** Un point de départ
+ * au-dessus de la cible (78 kg vers 70) est une cible à la baisse ; en dessous,
+ * une cible à la hausse. Poser la question en plus aurait ajouté un choix là où
+ * les deux nombres viennent d'être saisis côte à côte et le disent déjà. C'est
+ * pour cela que « Aujourd'hui » est obligatoire : il porte le sens autant que la
+ * valeur, et un départ manquant ferait lire une perte de poids comme une prise.
  */
 const MODES: ReadonlyArray<{
   value: EntryMode
@@ -102,6 +106,9 @@ export function QuantityQuestion({ draft, onChange, today, year }: QuantityQuest
 
   const releve = draft.entryMode === 'releve'
   const target = parseAmount(draft.targetValue)
+  // Le point de départ est requis en relevé : tant qu'il manque, il n'y a pas
+  // d'effort à projeter, seulement une phrase à dire.
+  const startMissing = releve && parseAmount(draft.startValue) === null
   const start = releve ? (parseAmount(draft.startValue) ?? 0) : 0
   const effort = quantityEffort({
     today,
@@ -202,12 +209,27 @@ export function QuantityQuestion({ draft, onChange, today, year }: QuantityQuest
 
       {/* Rien tant qu'aucune cible n'est saisie : sans elle, l'encart annonçait
           « votre point de départ atteint déjà la cible » (0 ≥ 0) dès l'ouverture
-          de l'écran, soit un avertissement faux sur un formulaire vide. */}
-      {target !== null && target > 0 && (
+          de l'écran, soit un avertissement faux sur un formulaire vide.
+
+          « de moins » quand la cible est sous le point de départ : c'est le seul
+          endroit du parcours où le sens déduit se donne à relire, et « soit
+          1,6 kg par mois » sur une perte de poids se lirait à l'envers. */}
+      {/* Le bouton de l'étape est déjà désactivé, mais un bouton éteint ne dit
+          pas ce qui manque : c'est l'encart qui le dit, à la place exacte où
+          l'effort s'afficherait une fois le champ rempli. */}
+      {startMissing && (
+        <QuietNote>
+          Indiquez où vous en êtes aujourd’hui : c’est le point de départ de votre
+          progression.
+        </QuietNote>
+      )}
+
+      {!startMissing && target !== null && target > 0 && (
         <FeasibilityNote>
           {effort.remaining <= 0 ? (
             <>
-              Vous êtes déjà à la cible. <NoteAside>Visez plus haut.</NoteAside>
+              Votre point de départ est déjà votre cible.{' '}
+              <NoteAside>Visez ailleurs.</NoteAside>
             </>
           ) : effort.perEntry === null ? (
             'Il ne reste aucun relevé d’ici la fin de la fenêtre.'
@@ -219,7 +241,9 @@ export function QuantityQuestion({ draft, onChange, today, year }: QuantityQuest
               </b>
               , soit{' '}
               <b>
-                {formatQuantity(effort.perEntry, suffix)} {rhythm}
+                {formatQuantity(effort.perEntry, suffix)}
+                {effort.descending ? ' de moins ' : ' '}
+                {rhythm}
               </b>
               .
             </>

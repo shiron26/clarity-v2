@@ -42,9 +42,10 @@ begin
   -- CLAIR (pas de vue déchiffrante) : son étanchéité repose entièrement sur ses
   -- policies RLS, pas sur le chiffrement — d'où sa place dans ce fichier.
   insert into public.objective (user_id, year, kind, label, title,
-                                measure, period_unit, target_value, unit, entry_mode, direction)
+                                measure, period_unit, target_value, unit, entry_mode, direction,
+                                start_value)
   values ('00000000-0000-0000-0000-00000000000a', extract(year from private.today())::int,
-          'principal', 'EPARGNE', 'Épargner', 'quantite', 'month', 6000, '€', 'cumul', 'atteindre')
+          'principal', 'EPARGNE', 'Épargner', 'quantite', 'month', 6000, '€', 'cumul', 'atteindre', 0)
   returning id into v_obj;
   insert into public.objective_entry (objective_id, value) values (v_obj, 400);
 

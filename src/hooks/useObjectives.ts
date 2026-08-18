@@ -40,6 +40,13 @@ export type Objective = {
   unit: string | null
   entry_mode: 'cumul' | 'releve' | null
   direction: 'atteindre' | 'sous' | null
+  /**
+   * L'origine de l'échelle d'une quantité — 0 pour un cumul, la valeur du jour
+   * de la création pour un relevé. Figée par le serveur : la progression se
+   * mesure sur la distance `départ → cible`, la déplacer rendrait faux tout ce
+   * qui a déjà été lu.
+   */
+  start_value: number | null
   closed_at: string | null
   /**
    * Le jour où l'objectif est né. Le serveur s'en sert déjà comme borne basse
@@ -54,7 +61,7 @@ export type Objective = {
 // lit la chaîne à la compilation, une concaténation lui rend un `string` et la
 // requête retombe sur `GenericStringError[]`.
 const COLUMNS =
-  'id, user_id, space_id, parent_objective_id, year, quarter, window_range, kind, slot, label, title, why, description, measure, period_unit, cadence, target_value, unit, entry_mode, direction, closed_at, created_at'
+  'id, user_id, space_id, parent_objective_id, year, quarter, window_range, kind, slot, label, title, why, description, measure, period_unit, cadence, target_value, unit, entry_mode, direction, start_value, closed_at, created_at'
 
 export function useObjectives(year: number | undefined) {
   const { status } = useAuth()

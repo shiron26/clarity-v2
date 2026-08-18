@@ -153,6 +153,7 @@ async function main() {
       unit: '€',
       entry_mode: 'releve',
       direction: 'atteindre',
+      start_value: 0,
     })
     .select('id, title, slot')
     .single()
@@ -233,6 +234,25 @@ async function main() {
         unit: '',
         entry_mode: 'cumul',
         direction: 'atteindre',
+        start_value: 0,
+      },
+      {
+        // Une cible à la BAISSE : le point de départ (78 kg) est au-dessus de
+        // la cible (70 kg), donc `direction: 'sous'`. Sans ce cas dans le seed,
+        // rien à l'écran ne permet de voir qu'une barre peut se remplir en
+        // descendant.
+        user_id: uid,
+        year,
+        kind: 'secondaire',
+        label: 'POIDS',
+        title: 'Descendre à 70 kg',
+        measure: 'quantite',
+        period_unit: 'month',
+        target_value: 70,
+        unit: 'kg',
+        entry_mode: 'releve',
+        direction: 'sous',
+        start_value: 78,
       },
       {
         user_id: uid,
@@ -249,10 +269,14 @@ async function main() {
   // Quelques relevés sur le quantifié. `entry_date` n'est pas envoyée : le
   // serveur la pose au jour applicatif — on ne peut donc pas antidater, et
   // toutes les saisies tombent aujourd'hui. C'est assumé pour un seed.
-  const objLivres = secondaries!.find((o) => o.measure === 'quantite')!
-  const { error: entryError } = await client
-    .from('objective_entry')
-    .insert([3, 2, 2].map((value) => ({ objective_id: objLivres.id as string, value })))
+  const objLivres = secondaries!.find((o) => o.title === 'Lire 24 livres cette année')!
+  const objPoids = secondaries!.find((o) => o.title === 'Descendre à 70 kg')!
+  const { error: entryError } = await client.from('objective_entry').insert([
+    ...[3, 2, 2].map((value) => ({ objective_id: objLivres.id as string, value })),
+    // Le premier relevé porte le point de départ, les suivants la descente :
+    // 78 → 75 kg, soit 3 kg parcourus sur les 8 attendus.
+    ...[78, 76, 75].map((value) => ({ objective_id: objPoids.id as string, value })),
+  ])
   if (entryError) throw new Error(`saisies : ${entryError.message}`)
 
   // --- jalons du trimestre en cours -----------------------------------------

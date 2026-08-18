@@ -5,7 +5,7 @@
 // des gestes ; les deux décisions du lot vivent ici.
 import { formatQuantity } from '../../lib/objectiveWording'
 import { type ObjectiveRegularity } from '../../hooks/useObjectiveRegularity'
-import { regularityPercent } from '../../lib/objectiveState'
+import { quantityPercent, regularityPercent } from '../../lib/objectiveState'
 import type { Milestone } from '../../hooks/useMilestones'
 import type { Objective } from '../../hooks/useObjectives'
 import type { ObjectiveProgress } from '../../hooks/useObjectiveProgress'
@@ -76,12 +76,10 @@ export function comebackLines(input: {
 
     if (objective.measure === 'quantite') {
       const value = input.progress.get(objective.id)?.value ?? 0
-      const target = objective.target_value
       return {
         objective,
         value: formatQuantity(value, objective.unit),
-        percent:
-          target && target > 0 ? Math.min(100, Math.round((value / target) * 100)) : null,
+        percent: quantityPercent(objective, value),
         steps: null,
         // Une quantité n'a pas de rythme quotidien : rien à reprocher, jamais
         // d'accent. C'est la même doctrine que la carte qui ne se désature pas.
