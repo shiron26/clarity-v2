@@ -1,4 +1,6 @@
 import { ObjectiveCard } from '../../../components/objectives/ObjectiveCard'
+import { SECTION_LABEL } from '../../../components/ui/sectionLabel'
+import { cn } from '../../../lib/cn'
 import { isObjectiveLit } from '../../../lib/objectiveState'
 import type { Milestone } from '../../../hooks/useMilestones'
 import type { Objective } from '../../../hooks/useObjectives'
@@ -24,10 +26,16 @@ type TasksObjectiveStripProps = {
 }
 
 /**
- * La bande d'objectifs en tête de l'écran Tâches — **compacte et desktop
- * seulement** (REFONTE §5) : sur 390 px elle mangerait l'écran avant la
- * première tâche. Elle rappelle à quoi les tâches se relient sans jamais
- * concurrencer la liste.
+ * La bande d'objectifs en tête de l'écran Tâches. Elle rappelle à quoi les
+ * tâches se relient sans jamais concurrencer la liste : cartes **compactes aux
+ * deux largeurs**, trois par ligne au-dessus de `lg`, empilées en dessous —
+ * exactement le pliage du dashboard (`ObjectivesBlock`), au même endroit de la
+ * page et dans le même ordre. Une seule variante de carte à connaître d'un
+ * écran à l'autre.
+ *
+ * Elle était desktop seulement (REFONTE §5, amendé) : trois cartes serrées à
+ * 390 px repoussent la première tâche d'environ 260 px. C'est le prix assumé
+ * pour que l'écran le plus visité rappelle sur quoi il compte.
  *
  * Elle passe les jalons et la progression comme le dashboard : sans eux, un
  * objectif jalonné afficherait « 0 / 0 » et un quantifié un montant nul — la
@@ -48,11 +56,11 @@ export function TasksObjectiveStrip({
   if (objectives.length === 0) return null
 
   return (
-    <section className="hidden lg:block">
-      <h2 className="mb-2 text-[10px] font-semibold tracking-[1.3px] text-ink-muted">
-        VOS OBJECTIFS
+    <section>
+      <h2 className={cn(SECTION_LABEL, 'mb-2')}>
+        {objectives.length === 1 ? 'VOTRE OBJECTIF' : 'VOS OBJECTIFS'}
       </h2>
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="flex flex-col gap-2.5 lg:grid lg:grid-cols-3">
         {objectives.map((objective) => {
           const week = weekByObjective.get(objective.id)
           return (

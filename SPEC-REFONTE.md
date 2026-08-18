@@ -689,8 +689,11 @@ information, pas un reproche. Le tri se fait au rituel.
 dentiste » existe ; l'interdire enverrait les gens ailleurs, la faire compter en douce
 polluerait la mesure.
 
-**Bande compacte d'objectifs en tête, desktop seulement** — comme aujourd'hui dans
-`TasksView`. Sur 390 px elle mangerait l'écran avant la première tâche.
+**Bande compacte d'objectifs en tête, aux deux largeurs.** Elle était desktop seulement :
+sur 390 px, trois cartes repoussent la première tâche d'environ 260 px. Amendé — l'écran le
+plus visité doit rappeler sur quoi il compte, et le pliage est celui du dashboard (cartes
+compactes empilées sous `lg`, trois par ligne au-dessus), pas une seconde grammaire à
+apprendre.
 
 ## Tests SQL
 

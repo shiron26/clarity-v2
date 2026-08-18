@@ -117,9 +117,9 @@ export function ObjectiveCard({
         >
           <TargetIcon className={compact ? 'size-3.5' : 'size-4'} />
         </span>
-        {/* Les deux usages de `compact` ne se croisent jamais : le dashboard les
-            empile en pleine largeur sous `lg`, l'écran Tâches les serre à trois
-            par ligne au-dessus. D'où une taille responsive plutôt qu'une prop. */}
+        {/* Une carte compacte vit à deux largeurs : empilée en pleine largeur
+            sous `lg` (dashboard et écran Tâches), serrée à trois par ligne
+            au-dessus. D'où une taille responsive plutôt qu'une prop. */}
         <h3
           className={cn(
             'min-w-0 leading-tight font-semibold',
