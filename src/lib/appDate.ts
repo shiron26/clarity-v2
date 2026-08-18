@@ -80,7 +80,9 @@ export function monthGrid(date: IsoDate): IsoDate[] {
  * détermine l'année, la semaine 1 est celle qui contient le premier jeudi.
  * Doit correspondre à `extract(isoyear|week from …)` côté Postgres.
  */
-export function isoWeek(date: IsoDate): { isoYear: number; isoWeek: number } {
+export type IsoWeek = { isoYear: number; isoWeek: number }
+
+export function isoWeek(date: IsoDate): IsoWeek {
   const thursday = toUtc(addDays(date, 4 - isoWeekday(date)))
   const isoYear = thursday.getUTCFullYear()
   const jan1 = new Date(Date.UTC(isoYear, 0, 1, 12))
@@ -157,15 +159,6 @@ export function yearProgressPercent(date: IsoDate): number {
   return Math.round((dayOfYear(date) / daysInYear(date)) * 100)
 }
 
-/**
- * Les `count` derniers lundis jusqu'à la semaine contenant `date`, incluse —
- * les colonnes de la heatmap de régularité de l'écran Objectifs.
- */
-export function lastWeeks(date: IsoDate, count: number): IsoDate[] {
-  const monday = startOfWeek(date)
-  return Array.from({ length: count }, (_, i) => addDays(monday, (i - count + 1) * 7))
-}
-
 /** Une semaine ISO, désignée sans ambiguïté. */
 export type WeekRef = { isoYear: number; weekNo: number; monday: IsoDate }
 
@@ -184,29 +177,57 @@ export function weeksOfQuarterRefs(date: IsoDate): WeekRef[] {
   })
 }
 
-/** Début du jour applicatif, au format attendu par une comparaison timestamptz. */
-export function startOfDayIso(date: IsoDate): string {
-  return `${date}T00:00:00`
-}
-
-/** « lun. 4 août » — pour les échéances en retard. */
-export function formatShortDate(date: IsoDate): string {
-  return new Intl.DateTimeFormat('fr-FR', {
+// Les formats `Intl` sont **construits une fois**, jamais dans le corps des
+// fonctions : `Intl.DateTimeFormat` est un objet coûteux à instancier, et
+// `formatDayMonth` est appelé une fois par ligne de tâche.
+const FMT = {
+  shortDate: new Intl.DateTimeFormat('fr-FR', {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
     timeZone: 'UTC',
-  }).format(toUtc(date))
-}
-
-/** « mercredi 13 août » — sous-titre de la vue « Aujourd'hui ». */
-export function formatLongDate(date: IsoDate): string {
-  return new Intl.DateTimeFormat('fr-FR', {
+  }),
+  longDate: new Intl.DateTimeFormat('fr-FR', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     timeZone: 'UTC',
-  }).format(toUtc(date))
+  }),
+  dayHeader: new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC',
+  }),
+  dayMonthLong: new Intl.DateTimeFormat('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC',
+  }),
+  dayMonthLongYear: new Intl.DateTimeFormat('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }),
+  dayMonth: new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', timeZone: 'UTC' }),
+  monthYear: new Intl.DateTimeFormat('fr-FR', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }),
+  monthShort: new Intl.DateTimeFormat('fr-FR', { month: 'short', timeZone: 'UTC' }),
+  dayNumber: new Intl.DateTimeFormat('fr-FR', { day: 'numeric', timeZone: 'UTC' }),
+}
+
+/** « lun. 4 août » — pour les échéances en retard. */
+export function formatShortDate(date: IsoDate): string {
+  return FMT.shortDate.format(toUtc(date))
+}
+
+/** « mercredi 13 août » — sous-titre de la vue « Aujourd'hui ». */
+export function formatLongDate(date: IsoDate): string {
+  return FMT.longDate.format(toUtc(date))
 }
 
 /**
@@ -216,14 +237,7 @@ export function formatLongDate(date: IsoDate): string {
  * d'abréviation compris.
  */
 export function formatDayHeader(date: IsoDate): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'long',
-    timeZone: 'UTC',
-  })
-    .format(toUtc(date))
-    .toUpperCase()
+  return FMT.dayHeader.format(toUtc(date)).toUpperCase()
 }
 
 /**
@@ -237,13 +251,50 @@ export function formatOverdueDelay(date: IsoDate, today: IsoDate): string {
   return formatShortDate(date)
 }
 
+/**
+ * Ancienneté d'un élément, en forme courte : « 9 j », « 6 sem », « 1 an ».
+ *
+ * Le pendant calme de `formatOverdueDelay` : ici rien n'est en retard, on dit
+ * seulement depuis quand la ligne attend. Le seuil de bascule est la semaine
+ * pleine — « 9 j » se lit encore, « 77 j » ne se lit plus.
+ */
+export function formatAge(from: IsoDate, today: IsoDate): string {
+  const days = diffDays(from, today)
+  if (days < 14) return `${days} j`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 52) return `${weeks} sem`
+  const years = Math.floor(days / 365)
+  return `${years} an${years > 1 ? 's' : ''}`
+}
+
+/** La même ancienneté en toutes lettres, pour l'infobulle et les lecteurs
+ *  d'écran : « depuis 6 semaines ». */
+export function formatAgeLong(from: IsoDate, today: IsoDate): string {
+  const days = diffDays(from, today)
+  if (days < 14) return `depuis ${days} jours`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 52) return `depuis ${weeks} semaines`
+  const years = Math.floor(days / 365)
+  return `depuis ${years} an${years > 1 ? 's' : ''}`
+}
+
+/**
+ * « 3 décembre » — mois en toutes lettres, sans le jour de la semaine.
+ *
+ * La date d'une projection ne désigne pas un rendez-vous : dire « mercredi »
+ * donnerait à une estimation la précision d'une échéance.
+ */
+export function formatDayMonthLong(date: IsoDate, reference?: IsoDate): string {
+  // L'année n'apparaît que si elle diffère de celle de la référence. Sans ça,
+  // une projection lointaine annonce « le 2 mai » sans dire lequel — et se lit
+  // comme dans huit mois alors qu'elle est dans vingt.
+  const withYear = reference !== undefined && year(date) !== year(reference)
+  return (withYear ? FMT.dayMonthLongYear : FMT.dayMonthLong).format(toUtc(date))
+}
+
 /** « 13 août » — pastille de date d'une ligne de tâche. */
 export function formatDayMonth(date: IsoDate): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'UTC',
-  }).format(toUtc(date))
+  return FMT.dayMonth.format(toUtc(date))
 }
 
 /**
@@ -251,11 +302,7 @@ export function formatDayMonth(date: IsoDate): string {
  * minuscule ; la capitale se pose à la main plutôt que par un second format.
  */
 export function formatMonthYear(date: IsoDate): string {
-  const label = new Intl.DateTimeFormat('fr-FR', {
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(toUtc(date))
+  const label = FMT.monthYear.format(toUtc(date))
   return label.charAt(0).toUpperCase() + label.slice(1)
 }
 
@@ -273,3 +320,19 @@ export const WEEK_HEADERS: ReadonlyArray<{ short: string; long: string }> = [
   { short: 'SA', long: 'samedi' },
   { short: 'DI', long: 'dimanche' },
 ]
+
+/**
+ * « août » — le mois seul, sans point d'abréviation.
+ *
+ * `Intl` rend « juil. » / « sept. » ; la maquette écrit ces mois sans point.
+ * Trois modules portaient leur propre `Intl.DateTimeFormat` et leur propre
+ * `.replace('.', '')`, chacun avec sa conversion `T12:00:00Z` faite main.
+ */
+export function formatMonthShort(date: IsoDate): string {
+  return FMT.monthShort.format(toUtc(date)).replace('.', '')
+}
+
+/** « 13 » — le quantième seul, pour les bornes d'une semaine. */
+export function formatDayNumber(date: IsoDate): string {
+  return FMT.dayNumber.format(toUtc(date))
+}

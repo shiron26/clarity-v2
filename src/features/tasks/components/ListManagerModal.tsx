@@ -13,6 +13,7 @@ import {
 import { cn } from '../../../lib/cn'
 import { dataErrorMessage } from '../../../lib/errorMessage'
 import { LIST_PALETTE, nextListColor } from '../../../lib/listPalette'
+import { buttonClasses } from '../../../components/ui/buttonClasses'
 
 type ListManagerModalProps = {
   open: boolean
@@ -177,20 +178,13 @@ export function ListManagerModal({ open, onClose, lists }: ListManagerModalProps
             onKeyDown={(event) => {
               if (event.key === 'Enter') addList()
             }}
-            className="min-w-0 flex-1 rounded-md border-[1.5px] border-border bg-canvas px-3 py-2.5 text-[12.5px] text-ink outline-none placeholder:text-placeholder focus:border-primary focus:bg-surface"
+            className="min-w-0 flex-1 rounded-md border-[1.5px] border-border bg-surface px-3 py-2.5 text-[12.5px] text-ink outline-none placeholder:text-placeholder focus:border-primary"
           />
           <button
             type="button"
             onClick={addList}
             disabled={!newName.trim() || createList.isPending}
-            className={cn(
-              'shrink-0 cursor-pointer rounded-md px-4.5 py-2.5 text-[12px] font-medium text-white',
-              'transition-[background-color,box-shadow,transform] duration-150',
-              'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
-              newName.trim()
-                ? 'bg-primary hover:-translate-y-px hover:bg-primary-hover hover:shadow-primary-hover active:translate-y-px active:bg-primary-active'
-                : 'cursor-default bg-border-idle',
-            )}
+            className={buttonClasses({ className: 'shrink-0 px-4.5 py-2.5 text-[12px]' })}
           >
             Ajouter
           </button>

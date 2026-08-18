@@ -16,8 +16,13 @@ type SegmentedGroupProps<T extends string> = {
 
 /**
  * « Toggle pill group » de DESIGN.md : conteneur `#ecebe6` radius 12 padding 4,
- * segment actif en fond blanc surélevé. Sert à la récurrence dans les deux
- * modales de tâche.
+ * segment actif en fond blanc surélevé.
+ *
+ * **À partir de trois choix seulement.** En dessous, ce sont des cartes-réponses
+ * (`OptionCard`) : un segment ne porte qu'un mot, ce qui suffit quand les
+ * options forment une échelle qu'on lit d'un coup (1 à 7 séances, cinq
+ * récurrences), mais pas quand il n'y en a que deux — là, le choix mérite d'être
+ * expliqué, et une carte a la place de le faire.
  */
 export function SegmentedGroup<T extends string>({
   value,

@@ -12,7 +12,13 @@ if (!url || !anonKey) {
   )
 }
 
+// Même valeur que celle dérivée par supabase-js (`sb-<1er label d'hôte>-auth-token`),
+// écrite en clair pour ne plus dépendre d'un détail d'implémentation. Garder l'hôte
+// dans la clé sépare la session locale (`sb-127-auth-token`) de celle du hosted
+// (`sb-<ref>-auth-token`) : une clé constante les ferait se marcher dessus en dev.
+const storageKey = `sb-${new URL(url).hostname.split('.')[0]}-auth-token`
+
 export const supabase = createClient<Database>(url, anonKey, {
   // storage custom : porte le « Rester connecté » (localStorage vs sessionStorage).
-  auth: { storage: authStorage },
+  auth: { storage: authStorage, storageKey },
 })

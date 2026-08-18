@@ -1,218 +1,184 @@
 import { useState } from 'react'
-import { cn } from '../../../lib/cn'
-import { CheckIcon } from '../../../components/icons/CheckIcon'
-import { Alert } from '../../../components/ui/Alert'
-import { ObjectiveHeatmap } from '../../../components/objectives/ObjectiveHeatmap'
+import { MilestoneList } from './MilestoneList'
+import { HabitRhythm } from './HabitRhythm'
+import { QuantityRhythm } from './QuantityRhythm'
+import { ObjectiveEntryModal } from './ObjectiveEntryModal'
+import { ObjectiveHeader } from './ObjectiveHeader'
+import { ObjectiveHero } from './ObjectiveHero'
+import { ObjectiveTasksBand } from './ObjectiveTasksBand'
+import { detailLayout } from '../detailLayout'
+import { heroContent } from '../heroContent'
+import { objectiveSkinOf } from '../../../lib/objectivePalette'
+import { projectCompletion } from '../../../lib/objectiveProjection'
+import { buildSeries } from '../../../lib/objectiveSeries'
+import { totalDone } from '../../../lib/objectivePeriod'
+import type { IsoDate } from '../../../lib/appDate'
 import type { Milestone } from '../../../hooks/useMilestones'
 import type { Objective } from '../../../hooks/useObjectives'
-import type { ObjectiveWeek } from '../../../hooks/useObjectiveWeeks'
-import type { QuarterRatings } from '../../../hooks/useQuarterRatings'
-import { useCloseObjective } from '../../../hooks/useObjectiveMutations'
-import { maskTitle, objectiveSkin } from '../../../lib/objectivePalette'
-import { dataErrorMessage } from '../../../lib/errorMessage'
-import type { IsoDate, WeekRef } from '../../../lib/appDate'
-import { CadenceStrip } from './CadenceStrip'
-import { MilestoneList } from './MilestoneList'
-import { ObjectiveCelebration } from './ObjectiveCelebration'
-import { TrendBadge } from './TrendBadge'
-import { cadenceLabel } from '../objectiveDisplay'
-
-const SECONDARY_GRADIENT = 'linear-gradient(150deg,#3f414d,#5a5c6b)'
+import type { ObjectiveEntry } from '../../../hooks/useObjectiveEntries'
+import type { ObjectivePeriod, PeriodUnit } from '../../../hooks/useObjectivePeriods'
+import type { ObjectiveProgress } from '../../../hooks/useObjectiveProgress'
+import type { ObjectiveRegularity } from '../../../hooks/useObjectiveRegularity'
 
 type ObjectiveDetailProps = {
   objective: Objective
-  /** Relevés de l'année ISO, tous objectifs confondus. */
-  weekIndex: Map<string, ObjectiveWeek>
-  /** Relevés du seul objectif affiché, dans l'ordre des semaines de la heatmap. */
-  objectiveWeeks: ObjectiveWeek[]
-  activeDays: Set<string>
-  weekDays: IsoDate[]
-  /** Lundis des 13 dernières semaines. */
-  heatmapWeeks: IsoDate[]
-  monthLabels: string[]
-  quarterWeeks: WeekRef[]
-  ratings: QuarterRatings
+  /** Relevés de CET objectif, dans SON unité de période. */
+  periods: ObjectivePeriod[]
+  regularity: ObjectiveRegularity | undefined
+  progress: ObjectiveProgress | undefined
+  /** Saisies de l'objectif — la projection d'une quantité en dépend. */
+  entries: ObjectiveEntry[]
+  /** L'échec de leur chargement, relayé tel quel à la bande de rythme. */
+  entriesError: Error | null
   milestones: Milestone[]
+  activeDays: Set<string>
+  /** Lundis de la grille, déjà tronqués à la date d'arrêt. */
+  weeks: IsoDate[]
+  /** Trimestre affiché — dérivé de la fenêtre de l'objectif, jamais choisi. */
   quarter: number
   today: IsoDate
-  currentWeekNo: number
+  /** Ouverture du bilan du trimestre, telle que le serveur la donne. */
+  reviewOpenAt: string | undefined
   privacy?: boolean
   readOnly?: boolean
   onEdit: () => void
+  onDeleted: () => void
 }
 
+/**
+ * L'écran d'un objectif : **une bande, une question**.
+ *
+ * De quoi s'agit-il (en-tête) · où j'en suis (le héros) · est-ce que je tiens le
+ * rythme (le bloc sombre) · la matière (étapes, tâches).
+ *
+ * Ce composant ne calcule rien et ne teste aucune mesure : `detailLayout` dit
+ * quelles bandes existent, `heroContent` dit ce qu'elles écrivent. Les cinq
+ * états de la maquette sont cinq combinaisons de ces deux réponses — d'où cinq
+ * gardes à plat plutôt qu'une cascade.
+ */
 export function ObjectiveDetail({
   objective,
-  weekIndex,
-  objectiveWeeks,
-  activeDays,
-  weekDays,
-  heatmapWeeks,
-  monthLabels,
-  quarterWeeks,
-  ratings,
+  periods,
+  regularity,
+  progress,
+  entries,
+  entriesError,
   milestones,
+  activeDays,
+  weeks,
   quarter,
   today,
-  currentWeekNo,
+  reviewOpenAt,
   privacy = false,
   readOnly = false,
   onEdit,
+  onDeleted,
 }: ObjectiveDetailProps) {
-  const closeObjective = useCloseObjective()
-  const [celebrating, setCelebrating] = useState(false)
+  const [entryOpen, setEntryOpen] = useState(false)
 
-  const skin = objectiveSkin(objective.slot)
-  const isPrincipal = objective.kind === 'principal'
-  const reached = objective.closed_at !== null
-  const title = privacy ? maskTitle(objective.title) : objective.title
+  const layout = detailLayout(objective)
+  const skin = objectiveSkinOf(objective)
+  const unit: PeriodUnit = objective.period_unit ?? 'week'
 
-  // Un secondaire n'a ni cadence, ni relevé hebdomadaire, ni tâches : les jalons
-  // sont sa seule mécanique (SPEC §3). Tout le bloc de régularité disparaît.
-  const showCadence = isPrincipal && !reached
-  const sub = isPrincipal ? cadenceLabel(objective.cadence) : objective.description
+  const done = totalDone(periods, unit)
+  const series = buildSeries(entries, objective.entry_mode)
+  const projection = projectCompletion({
+    objective,
+    today,
+    periods,
+    totalDone: done,
+    series,
+    quantityValue: progress?.value ?? 0,
+  })
+
+  const hero = heroContent({
+    objective,
+    layout,
+    quarter,
+    today,
+    totalDone: done,
+    quantityValue: progress?.value ?? 0,
+    milestones,
+    projection,
+    reviewOpenAt,
+  })
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-surface shadow-card">
-      <div className="border-b border-surface-subtle px-5.5 pt-4 pb-3.5">
-        <div className="flex flex-wrap items-center gap-3">
-          <span
-            className="size-3 shrink-0 rounded-full"
-            style={{
-              backgroundImage: isPrincipal ? skin.gradient : SECONDARY_GRADIENT,
-              boxShadow: isPrincipal ? `0 0 10px ${skin.ramp[1]}66` : undefined,
-            }}
-          />
-          <h2 className="min-w-0 flex-1 text-card font-semibold">{title}</h2>
-
-          {!readOnly && (
-            <div className="flex w-full gap-2 sm:w-auto">
-              <button
-                type="button"
-                onClick={onEdit}
-                className="flex flex-1 cursor-pointer items-center justify-center rounded-md border border-border bg-surface px-3.5 py-2 text-[11.5px] font-medium text-ink-2 transition-colors duration-150 hover:border-border-strong hover:text-ink sm:flex-none"
-              >
-                ✎ Modifier
-              </button>
-
-              {isPrincipal && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    closeObjective.mutate(
-                      { id: objective.id, closed: !reached },
-                      // On ne célèbre qu'une clôture : rouvrir ne déclenche rien.
-                      { onSuccess: () => !reached && setCelebrating(true) },
-                    )
-                  }
-                  disabled={closeObjective.isPending}
-                  className={cn(
-                    'flex flex-1 cursor-pointer items-center justify-center rounded-md border px-3.5 py-2 text-[11.5px] font-medium whitespace-nowrap transition-colors duration-150 sm:flex-none',
-                    reached
-                      ? 'border-[#b7e4c7] bg-[#eef8f0] text-[#0d7a45]'
-                      : 'border-border bg-surface text-ink-2 hover:border-border-strong',
-                  )}
-                >
-                  {reached ? '↺ Rouvrir' : '✓ Marquer comme terminé'}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {sub && (
-          <div className="mt-2.5 pl-6">
-            <span className="rounded-2xl border border-border bg-field px-2.5 py-[3px] text-[10.5px] font-medium text-ink-2">
-              {privacy && !isPrincipal ? '•••' : sub}
-            </span>
-          </div>
-        )}
-
-        {closeObjective.error && (
-          <Alert className="mt-3">{dataErrorMessage(closeObjective.error)}</Alert>
-        )}
-      </div>
-
-      {reached && (
-        <div className="flex items-center gap-3 border-b border-surface-subtle bg-[#eef8f0] px-5.5 py-4">
-          <span className="flex size-7.5 shrink-0 items-center justify-center rounded-full bg-[#12b76a] text-white">
-            <CheckIcon className="size-3.5" />
-          </span>
-          <span className="text-body font-semibold text-[#0d7a45]">Objectif atteint</span>
-        </div>
-      )}
-
-      {showCadence && (
-        <>
-          <CadenceStrip
-            objective={objective}
-            week={weekIndex.get(`${objective.id}|${currentWeekNo}`)}
-            activeDays={activeDays}
-            weekDays={weekDays}
-            quarterWeeks={quarterWeeks}
-            ratings={ratings}
-            quarter={quarter}
-          />
-
-          <div className="grid gap-7 bg-night px-5.5 py-5 lg:grid-cols-[1fr_260px]">
-            <div className="min-w-0">
-              <h3 className="mb-1.5 text-[10px] font-semibold tracking-[1.3px] text-[#7c8097]">
-                RÉGULARITÉ · Q{quarter}
-              </h3>
-              <p className="mb-3.5 text-[10.5px] leading-relaxed text-[#565866]">
-                Une case s’allume quand une séance est faite ce jour
-                <span className="hidden sm:inline"> · une colonne encadrée = semaine réussie</span>
-              </p>
-
-              <ObjectiveHeatmap
-                objective={objective}
-                weeks={heatmapWeeks}
-                weekIndex={weekIndex}
-                activeDays={activeDays}
-                today={today}
-                privacy={privacy}
-                showDayLabels
-                showHeader={false}
-              />
-
-              <div className="mt-3 flex gap-6 text-[8.5px] text-[#565866]">
-                {monthLabels.map((month, i) => (
-                  <span
-                    key={`${month}-${i}`}
-                    className={cn(i === monthLabels.length - 1 && 'font-semibold text-[#9aa0b5]')}
-                  >
-                    {month}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-center">
-              <TrendBadge weeks={objectiveWeeks} />
-            </div>
-          </div>
-        </>
-      )}
-
-      <MilestoneList
+    <article className="overflow-hidden rounded-2xl bg-surface shadow-card">
+      <ObjectiveHeader
         objective={objective}
-        milestones={milestones}
-        quarter={quarter}
+        meta={hero.meta}
+        dim={layout.dim}
         privacy={privacy}
         readOnly={readOnly}
+        onEdit={onEdit}
+        onDeleted={onDeleted}
       />
 
-      {celebrating && (
-        <ObjectiveCelebration
+      <ObjectiveHero
+        value={hero.value}
+        of={hero.of}
+        suffix={hero.suffix}
+        percent={hero.percent}
+        color={layout.dim ? 'var(--color-border-strong)' : skin.core}
+        projection={hero.projection}
+        action={
+          layout.entryAction && !readOnly
+            ? { label: 'Saisir mon relevé', onClick: () => setEntryOpen(true) }
+            : undefined
+        }
+      />
+
+      {layout.rhythm === 'heatmap' && (
+        <HabitRhythm
           objective={objective}
-          week={weekIndex.get(`${objective.id}|${currentWeekNo}`)}
+          periods={periods}
+          regularity={regularity}
           activeDays={activeDays}
-          milestones={milestones}
-          weekDays={weekDays}
+          weeks={weeks}
+          quarter={quarter}
           today={today}
-          onClose={() => setCelebrating(false)}
+          showRegularity={layout.regularity}
+          privacy={privacy}
         />
       )}
-    </div>
+
+      {layout.rhythm === 'curve' && (
+        <QuantityRhythm
+          objective={objective}
+          regularity={regularity}
+          showRegularity={layout.regularity}
+          series={series}
+          entriesError={entriesError}
+        />
+      )}
+
+      {/* Une bande d'étapes vide et non modifiable n'apprend rien : sur un
+          objectif arrêté, « 0 / 0 » se lit comme un manque là où il n'y a
+          simplement rien eu. */}
+      {layout.milestones && !(layout.dim && milestones.length === 0) && (
+        <MilestoneList
+          objective={objective}
+          milestones={milestones}
+          quarter={quarter}
+          title={hero.milestonesTitle}
+          privacy={privacy}
+          readOnly={readOnly || layout.dim}
+        />
+      )}
+
+      {layout.relatedTasks && (
+        <ObjectiveTasksBand objective={objective} today={today} readOnly={readOnly || layout.dim} />
+      )}
+
+      {layout.entryAction && (
+        <ObjectiveEntryModal
+          open={entryOpen}
+          onClose={() => setEntryOpen(false)}
+          objective={objective}
+          progress={progress}
+        />
+      )}
+    </article>
   )
 }

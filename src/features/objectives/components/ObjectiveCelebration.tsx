@@ -3,10 +3,21 @@ import { cn } from '../../../lib/cn'
 import { ObjectiveCard } from '../../../components/objectives/ObjectiveCard'
 import type { Milestone } from '../../../hooks/useMilestones'
 import type { Objective } from '../../../hooks/useObjectives'
-import type { ObjectiveWeek } from '../../../hooks/useObjectiveWeeks'
+import type { ObjectivePeriod } from '../../../hooks/useObjectivePeriods'
 import { objectiveSkin } from '../../../lib/objectivePalette'
 import { usePrefersReducedMotion } from '../../../hooks/usePrefersReducedMotion'
 import type { IsoDate } from '../../../lib/appDate'
+
+// ⚠️ Sans appelant depuis le lot 4, volontairement.
+//
+// Clôturer un objectif signifie désormais « **arrêté** », pas « atteint » : c'est
+// le bilan du trimestre qui pose le verdict (`review_item.achieved`, REFONTE §8).
+// Célébrer un arrêt serait exactement le contresens que ce changement de
+// vocabulaire évite, donc le déclenchement automatique a été retiré.
+//
+// Le composant est conservé tel quel en attendant son vrai déclencheur, au §8 —
+// le réécrire dans deux lots coûterait plus cher que de le laisser dormir. À
+// supprimer si le §8 tranche autrement.
 
 // Séquence de la maquette : la carte arrive désaturée, puis « s'allume » avec
 // les confettis, puis le texte et le lien apparaissent en décalé.
@@ -32,7 +43,7 @@ type Confetti = {
 
 type ObjectiveCelebrationProps = {
   objective: Objective
-  week: ObjectiveWeek | undefined
+  week: ObjectivePeriod | undefined
   activeDays: Set<string>
   milestones: Milestone[]
   weekDays: IsoDate[]
@@ -164,7 +175,6 @@ export function ObjectiveCelebration({
           milestones={milestones}
           daysOfWeek={weekDays}
           today={today}
-          showMilestones
           lit={revealed}
           popping={popping}
         />

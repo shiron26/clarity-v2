@@ -181,7 +181,7 @@ export function Calendar({
                             ? 'h-[38px] w-full max-w-[38px] text-ui'
                             : 'h-[26px] w-full max-w-[26px] text-label',
                           selected && 'bg-primary-soft font-semibold text-primary',
-                          !selected && isToday && 'border-[#a9beff] font-semibold text-primary',
+                          !selected && isToday && 'border-border-primary-soft font-semibold text-primary',
                           !selected && !isToday && (outside ? 'text-[#c9c9c2]' : 'text-ink'),
                         )}
                       >

@@ -7,6 +7,8 @@
 interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL: string
   readonly VITE_SUPABASE_ANON_KEY: string
+  // Dev uniquement (voir useProfile) : '1' force `onboarded_at` à null.
+  readonly VITE_FORCE_ONBOARDING?: string
 }
 
 interface ImportMeta {

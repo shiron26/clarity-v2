@@ -11,6 +11,7 @@ import {
 } from '../../../hooks/useMilestoneMutations'
 import { maskTitle, objectiveSkin } from '../../../lib/objectivePalette'
 import { dataErrorMessage } from '../../../lib/errorMessage'
+import { SECTION_LABEL } from '../../../components/ui/sectionLabel'
 
 /** Contrainte serveur `milestone_cap` — on la reflète dans l'UI. */
 const MAX_PER_QUARTER = 4
@@ -19,6 +20,9 @@ type MilestoneListProps = {
   objective: Objective
   milestones: Milestone[]
   quarter: number
+  /** « Jalons · T3 » sur une habitude, « Les étapes » sur un objectif jalonné —
+   *  c'est le même objet, mais il n'a pas le même statut dans les deux écrans. */
+  title?: string
   privacy?: boolean
   readOnly?: boolean
 }
@@ -34,6 +38,7 @@ export function MilestoneList({
   objective,
   milestones,
   quarter,
+  title: heading,
   privacy = false,
   readOnly = false,
 }: MilestoneListProps) {
@@ -72,13 +77,13 @@ export function MilestoneList({
   }
 
   return (
-    <div className="px-5.5 py-5">
+    <div className="border-t border-surface-subtle px-5.5 py-5">
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
-        <h3 className="text-[10px] font-semibold tracking-[1.3px] text-ink-muted">
-          JALONS · Q{quarter}
+        <h3 className={SECTION_LABEL}>
+          {heading ?? `Jalons · T${quarter}`}
         </h3>
-        <span className="text-[10.5px] text-ink-muted">
-          {doneCount}/{milestones.length} jalon{milestones.length > 1 ? 's' : ''}
+        <span className="text-caption text-ink-muted">
+          {doneCount} / {milestones.length}
         </span>
       </div>
 

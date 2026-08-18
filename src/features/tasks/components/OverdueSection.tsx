@@ -16,7 +16,6 @@ type OverdueSectionProps = {
   /** Toutes les listes, pour le menu de la pastille en desktop. */
   lists: List[]
   onToggle: (task: Task) => void
-  onRename: (task: Task, title: string) => void
   onToggleImportant: (task: Task) => void
   onPickList: (task: Task, listId: string | null) => void
   onPickDue: (task: Task, dueDate: IsoDate | null) => void
@@ -25,10 +24,28 @@ type OverdueSectionProps = {
   /** Report en masse (SPEC §5) — tâches personnelles uniquement. */
   onPostponeAll: () => void
   postponing: boolean
+  /** L'autre sortie : retirer la date, la tâche rejoint « Sans date ». */
+  onUndateAll: () => void
+  undating: boolean
   donePhaseFor: (taskId: string) => DonePhase | undefined
   reducedMotion: boolean
   className?: string
 }
+
+/**
+ * Les deux actions groupées partagent leur forme : une pastille arrondie, **aux
+ * deux largeurs**. Elles étaient du texte nu en mobile, pour gagner de la place :
+ * deux mots gris alignés à droite d'un titre, que rien ne désignait comme
+ * cliquables. Un fond et un rayon coûtent quelques pixels et rendent le bouton
+ * évident ; c'est le libellé qui se raccourcit, pas la forme. Plus haut au doigt
+ * qu'au curseur, pour la même raison.
+ */
+const BULK_ACTION = cn(
+  'cursor-pointer rounded-2xl px-3 py-1.5 text-[11.5px] font-medium whitespace-nowrap',
+  'transition-colors duration-150 focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
+  'disabled:cursor-default disabled:opacity-60',
+  'lg:py-[5px] lg:text-[11px]',
+)
 
 /**
  * Le retard a sa section, pas ses propres lignes : ce sont celles du reste de
@@ -43,7 +60,6 @@ export function OverdueSection({
   listById,
   lists,
   onToggle,
-  onRename,
   onToggleImportant,
   onPickList,
   onPickDue,
@@ -51,6 +67,8 @@ export function OverdueSection({
   onDelete,
   onPostponeAll,
   postponing,
+  onUndateAll,
+  undating,
   donePhaseFor,
   reducedMotion,
   className,
@@ -63,25 +81,40 @@ export function OverdueSection({
 
   return (
     <section className={className}>
-      <div className="mb-0.5 flex items-center gap-3">
+      {/* Le titre et le bouton forment une barre au-dessus de la liste : à
+          2 px, elle se collait à la première tâche et se lisait comme sa
+          première ligne. */}
+      <div className="mb-3.5 flex items-center gap-3 lg:mb-2.5">
         <h2 className="text-[9.5px] font-semibold tracking-[1.3px] text-danger lg:text-[11px] lg:tracking-[1.2px]">
           EN RETARD ({tasks.length})
         </h2>
-        <button
-          type="button"
-          onClick={onPostponeAll}
-          disabled={postponing}
-          title="Reporte vos tâches en retard à aujourd’hui. Les tâches partagées ne bougent pas."
-          className={cn(
-            'ml-auto cursor-pointer rounded-xs text-[11.5px] font-medium whitespace-nowrap text-danger',
-            'transition-colors duration-150 focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
-            'disabled:cursor-default disabled:opacity-60',
-            'lg:ml-0 lg:rounded-2xl lg:bg-danger-bg lg:px-3 lg:py-[5px] lg:text-[11px] lg:hover:bg-[#fbdcc6]',
-          )}
-        >
-          <span className="lg:hidden">Tout reporter →</span>
-          <span className="hidden lg:inline">Tout reporter à aujourd’hui</span>
-        </button>
+        {/* Deux sorties possibles, et la seconde n'est pas un repli : reporter
+            à aujourd'hui suppose qu'on s'en occupe aujourd'hui, alors qu'une
+            pile de retards contient surtout des choses qu'on fera « un jour ».
+            La retirer du calendrier est souvent la réponse honnête — d'où deux
+            boutons de même taille, celui du report gardant seul le rouge. */}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onPostponeAll}
+            disabled={postponing || undating}
+            title="Reporte vos tâches en retard à aujourd’hui. Les tâches partagées ne bougent pas."
+            className={cn(BULK_ACTION, 'bg-danger-bg text-danger hover:bg-[#fbdcc6]')}
+          >
+            <span className="lg:hidden">Reporter</span>
+            <span className="hidden lg:inline">Tout reporter à aujourd’hui</span>
+          </button>
+          <button
+            type="button"
+            onClick={onUndateAll}
+            disabled={postponing || undating}
+            title="Retire la date de vos tâches en retard : elles passent dans « Sans date ». Les tâches partagées ne bougent pas."
+            className={cn(BULK_ACTION, 'bg-field text-ink-3 hover:bg-border hover:text-ink')}
+          >
+            <span className="lg:hidden">Sans date</span>
+            <span className="hidden lg:inline">Tout mettre sans date</span>
+          </button>
+        </div>
       </div>
 
       <ul className="hidden flex-col lg:flex">
@@ -98,7 +131,6 @@ export function OverdueSection({
             reducedMotion={reducedMotion}
             overdueLabel={delayOf(task)}
             onToggle={onToggle}
-            onRename={onRename}
             onToggleImportant={onToggleImportant}
             onPickList={onPickList}
             onPickDue={onPickDue}

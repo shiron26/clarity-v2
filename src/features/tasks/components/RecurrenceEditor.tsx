@@ -130,7 +130,7 @@ export function RecurrenceEditor({
                       'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
                       selected
                         ? 'border-primary bg-primary text-white'
-                        : 'border-border bg-canvas text-ink-3 hover:border-[#a9beff]',
+                        : 'border-border bg-canvas text-ink-3 hover:border-border-primary-soft',
                     )}
                   >
                     <span aria-hidden>{day.short}</span>

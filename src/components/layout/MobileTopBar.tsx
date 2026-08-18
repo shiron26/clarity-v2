@@ -4,6 +4,7 @@ import { useProfile } from '../../hooks/useProfile'
 import { Logo } from '../brand/Logo'
 import { LogoutIcon } from '../icons/LogoutIcon'
 import { Avatar } from '../ui/Avatar'
+import { PrivacyToggle } from './PrivacyToggle'
 
 type MobileTopBarProps = {
   /** Reçoit le nœud où les écrans envoient leurs actions — voir `topBarSlot.ts`. */
@@ -22,6 +23,10 @@ export function MobileTopBar({ actionsRef }: MobileTopBarProps) {
         {/* Actions de l'écran courant, avant la déconnexion : les remonter ici
             épargne une pleine ligne de barre d'outils sous le logo. */}
         <div ref={actionsRef} className="flex items-center gap-1" />
+
+        {/* Après les actions d'écran, avant la déconnexion : comme elle, il vaut
+            pour l'application entière et non pour la page ouverte. */}
+        <PrivacyToggle variant="icon" />
 
         <button
           type="button"

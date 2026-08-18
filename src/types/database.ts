@@ -7,54 +7,122 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.15"
-  }
   public: {
     Tables: {
-      objective_week: {
+      objective_entry: {
         Row: {
-          active_days: number
-          cadence_target: number
-          iso_week: number
-          iso_year: number
+          created_at: string
+          created_by: string
+          entry_date: string
+          id: string
+          objective_id: string
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          entry_date?: string
+          id?: string
+          objective_id: string
+          value: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          entry_date?: string
+          id?: string
+          objective_id?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "objective_entry_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profile"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      objective_period: {
+        Row: {
+          done: number
+          objective_id: string
+          period_index: number
+          period_unit: string
+          period_year: number
+          target: number
+        }
+        Insert: {
+          done?: number
+          objective_id: string
+          period_index: number
+          period_unit: string
+          period_year: number
+          target: number
+        }
+        Update: {
+          done?: number
+          objective_id?: string
+          period_index?: number
+          period_unit?: string
+          period_year?: number
+          target?: number
+        }
+        Relationships: []
+      }
+      objective_session: {
+        Row: {
+          created_at: string
+          created_by: string
+          day: string
+          id: string
           objective_id: string
         }
         Insert: {
-          active_days?: number
-          cadence_target: number
-          iso_week: number
-          iso_year: number
+          created_at?: string
+          created_by?: string
+          day: string
+          id?: string
           objective_id: string
         }
         Update: {
-          active_days?: number
-          cadence_target?: number
-          iso_week?: number
-          iso_year?: number
+          created_at?: string
+          created_by?: string
+          day?: string
+          id?: string
           objective_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "objective_session_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profile"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profile: {
         Row: {
           deleted_at: string | null
           display_name: string
           id: string
+          last_seen_on: string | null
           onboarded_at: string | null
         }
         Insert: {
           deleted_at?: string | null
           display_name?: string
           id: string
+          last_seen_on?: string | null
           onboarded_at?: string | null
         }
         Update: {
           deleted_at?: string | null
           display_name?: string
           id?: string
+          last_seen_on?: string | null
           onboarded_at?: string | null
         }
         Relationships: []
@@ -238,15 +306,23 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           description: string | null
+          direction: string | null
+          entry_mode: string | null
           id: string | null
           kind: string | null
           label: string | null
+          measure: string | null
           parent_objective_id: string | null
+          period_unit: string | null
+          quarter: number | null
           slot: number | null
           space_id: string | null
+          target_value: number | null
           title: string | null
+          unit: string | null
           user_id: string | null
           why: string | null
+          window_range: unknown
           year: number | null
         }
         Relationships: []
@@ -333,6 +409,25 @@ export type Database = {
           objective_id: string
         }[]
       }
+      objective_progress: {
+        Args: { p_objectives: string[] }
+        Returns: {
+          entries: number
+          last_entry_date: string
+          objective_id: string
+          value: number
+        }[]
+      }
+      objective_regularity: {
+        Args: { p_objectives: string[] }
+        Returns: {
+          done: number
+          done_projected: number
+          objective_id: string
+          target: number
+          target_projected: number
+        }[]
+      }
       objective_rows: {
         Args: never
         Returns: {
@@ -341,15 +436,23 @@ export type Database = {
           created_at: string
           created_by: string
           description: string
+          direction: string
+          entry_mode: string
           id: string
           kind: string
           label: string
+          measure: string
           parent_objective_id: string
+          period_unit: string
+          quarter: number
           slot: number
           space_id: string
+          target_value: number
           title: string
+          unit: string
           user_id: string
           why: string
+          window_range: unknown
           year: number
         }[]
       }
@@ -410,6 +513,8 @@ export type Database = {
           user_id: string
         }[]
       }
+      touch_last_seen: { Args: never; Returns: string }
+      undate_overdue_tasks: { Args: never; Returns: number }
       week_task_count: {
         Args: { p_from: string; p_to: string }
         Returns: {
@@ -549,3 +654,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+

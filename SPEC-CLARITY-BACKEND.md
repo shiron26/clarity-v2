@@ -11,10 +11,16 @@ appliquer (filtres de vues, prédicats, contraintes).
 Trois principes se sont dégagés au fil des décisions. Ils tranchent d'avance la plupart
 des questions non couvertes par ce document.
 
-**Clarity ne note pas à votre place.** Aucun score calculé par l'application ne subsiste :
-ni pourcentage de progression, ni streak, ni barre de complétion. L'app enregistre des
-faits — des jours actifs, des cases cochées — et l'utilisateur pose lui-même son jugement,
-en fusées chaque semaine et par un verdict en fin d'année.
+**Clarity ne note pas à votre place.** L'app mesure deux choses, et deux seulement : une
+**régularité** (tenu sur attendu, sur les quatre dernières périodes closes) et une
+**progression** quand l'objectif porte une cible. Elle n'en tire aucun verdict. Le jugement
+reste humain — en fusées chaque semaine, par un verdict au trimestre et à l'année — et il
+tranche là où le chiffre ne peut pas.
+
+> **Amendé par [SPEC-REFONTE.md](./SPEC-REFONTE.md) §0.1.** La version initiale de ce
+> principe interdisait tout score calculé (« ni pourcentage, ni streak, ni barre de
+> complétion »). La refonte le renverse sur le calcul, pas sur le verdict : ce qui reste
+> banni, c'est que l'app conclue à la place de l'utilisateur.
 
 **Clarity ne reporte jamais rien automatiquement.** Un jalon non accompli ne bascule pas au
 trimestre suivant, un objectif non atteint ne se reconduit pas en janvier, une occurrence
@@ -122,16 +128,43 @@ objective
   user_id | space_id
   parent_objective_id   uuid?    -- fork : pointe vers un principal d'espace
   year                  int
+  quarter               smallint?  1-4, null = objectif annuel
+  window_range          daterange  généré depuis (year, quarter), bornes [début, fin)
   kind                  'principal' | 'secondaire'   -- null pour un fork
   slot                  smallint                     -- null pour un fork
   label_enc             bytea    NOT NULL
   title_enc             bytea    NOT NULL
   why_enc               bytea?
   description_enc       bytea?
-  cadence               smallint?  check between 1 and 7
+  measure               'habitude' | 'quantite' | 'jalons'
+  period_unit           'week' | 'month' ?   -- null pour jalons
+  cadence               smallint?  check between 1 and 31 (≤ 7 si period_unit = 'week')
+  target_value          numeric?   -- en clair, assumé
+  unit                  text?      -- libellé d'affichage, null = sans unité
+  entry_mode            'cumul' | 'releve' ?   -- quantité seulement
+  direction             'atteindre' | 'sous' ?  -- quantité seulement
   closed_at             timestamptz?
   created_by            uuid
 ```
+
+**La fenêtre d'un objectif n'est plus l'année.** `window_range` la dérive de `(year, quarter)`
+en bornes `[début, fin)` : un T1 va du 1<sup>er</sup> janvier au 1<sup>er</sup> avril exclu,
+un annuel du 1<sup>er</sup> janvier au 1<sup>er</sup> janvier suivant. Les slots sont uniques
+**par chevauchement de fenêtre**, pas par année — deux contraintes d'exclusion GiST le disent
+déclarativement. Conséquence : trois principaux **simultanés**, jusqu'à douze dans l'année, et
+jamais deux objectifs simultanés de la même couleur (l'identité visuelle vient du slot).
+
+**Trois types de mesure**, portés par `measure` :
+
+| | `cadence` | `period_unit` | `target_value` | `entry_mode` |
+|---|---|---|---|---|
+| `habitude` | requis, ≤ 7 si `week` | requis | facultatif | — |
+| `quantite` | — (1 par période) | requis | **requis** | requis |
+| `jalons` | — | — | — | — |
+
+`habitude` est réservée aux principaux perso et aux forks : un secondaire n'a pas de demande
+périodique, un objectif d'espace n'a pas de rythme propre (§4.2). `measure`, `period_unit` et
+`entry_mode` sont **figés à la création** — changer de nature, c'est supprimer et recréer.
 
 **Trois natures d'objectif**, avec des mécaniques distinctes :
 
@@ -145,8 +178,8 @@ objective
 
 Le `slot` est un **emplacement figé** attribué à la création, qui détermine l'identité
 visuelle. Supprimer un objectif libère son slot sans décaler les autres ; une création
-prend le plus petit slot libre. Un objectif clôturé **ne libère pas** son slot : il reste
-occupé jusqu'à la fin de l'année.
+prend le plus petit slot libre parmi ceux qu'aucune fenêtre chevauchante n'occupe. Un
+objectif clôturé **ne libère pas** son slot : c'est la fin de sa fenêtre qui le libère.
 
 **Le fork.** Un membre peut forker un objectif **principal** d'espace (jamais un
 secondaire, qui n'a pas de cadence) pour en faire un objectif personnel avec son propre
@@ -247,19 +280,46 @@ crédit tombe sur le propriétaire du fork quel que soit le membre qui coche.
 Une tâche sans liste, sans objectif et sans date reste accessible dans la vue « Toutes ».
 Les tâches non terminées d'un objectif archivé sont archivées avec lui.
 
-### objective_week
+### objective_period
 
 ```
-objective_week
-  objective_id, iso_year, iso_week
-  cadence_target  smallint   -- figée : la valeur en vigueur cette semaine-là
-  active_days     smallint
-  pk (objective_id, iso_year, iso_week)
+objective_period
+  objective_id, period_unit ('week' | 'month'), period_year, period_index
+  target   smallint   -- figée : la valeur en vigueur cette période-là
+  done     smallint
+  pk (objective_id, period_unit, period_year, period_index)
 ```
 
 Cette table existe pour une seule raison : la cadence d'un objectif peut changer en cours
 d'année. Une vue recalculée réécrirait rétroactivement l'historique avec la cadence
 actuelle, transformant des mois de réussite en échecs. La cible doit donc être figée.
+
+Une seule table pour toute la régularité, quel que soit le type :
+
+| `measure` | `target` | `done` |
+|---|---|---|
+| `habitude` | `cadence`, figée à la première activité de la période | jours crédités distincts |
+| `quantite` | `1` — une saisie attendue par période | `0` ou `1` |
+| `jalons` | *aucune ligne* | — |
+
+> **Amendé par SPEC-REFONTE §1.3.** S'appelait `objective_week` et ne savait compter que des
+> semaines (`iso_year` / `iso_week` / `cadence_target` / `active_days`).
+
+### objective_entry
+
+```
+objective_entry
+  id, objective_id
+  entry_date  date       -- posée par le serveur au jour applicatif
+  value       numeric
+  created_by, created_at
+```
+
+Les saisies d'un objectif quantifié, en clair. `value` est un nombre nu — jamais `"3 850 €"` ;
+`unit` n'est qu'un libellé d'affichage. En mode `cumul` les saisies s'additionnent, en mode
+`releve` la dernière remplace la précédente et **peut baisser** (un solde, un poids). Saisir
+un relevé antidaté n'est pas un besoin du produit : `entry_date` vient du serveur, même
+doctrine que `completed_at` et `closed_at`.
 
 ### review / review_item
 
@@ -291,9 +351,10 @@ paramétré. Seule la règle de portée change.
 
 ### 4.1 Cadence et jours actifs
 
-La cadence est le nombre de fois par semaine où l'on doit avancer sur un objectif. Un
-entier de 1 à 7 ; « Quotidien » n'est pas un cas particulier, c'est simplement 7. Elle est
-obligatoire sur les objectifs principaux perso et sur les forks, absente partout ailleurs.
+La cadence est le nombre de fois **par période** où l'on doit avancer sur un objectif — la
+période étant la semaine ou le mois (`period_unit`). En hebdomadaire, un entier de 1 à 7 ;
+« Quotidien » n'est pas un cas particulier, c'est simplement 7. Elle est obligatoire sur les
+objectifs de mesure `habitude` — principaux perso et forks — et absente partout ailleurs.
 
 Elle existe pour corriger un faux échec : un objectif poursuivi trois fois par semaine ne
 doit pas apparaître comme quatre jours d'inactivité.
@@ -311,24 +372,31 @@ credit_day = least(coalesce(due_date, current_date), current_date)
 Échéance passée, on crédite l'échéance ; échéance future ou absente, on crédite
 aujourd'hui.
 
-**Alimentation de `objective_week` :**
+**Alimentation de `objective_period` :**
 
 - Un **trigger** sur la complétion d'une tâche fait un `upsert` : il crée la ligne à la
-  première activité de la semaine en y figeant la cadence en vigueur, ou incrémente
-  `active_days`.
-- Un **job hebdomadaire le lundi** ne s'occupe que des semaines restées vides, pour
-  qu'elles apparaissent à 0 dans le bilan annuel plutôt que d'être absentes. Il doit être
-  idempotent et rattraper les semaines manquées s'il a échoué.
+  première activité de la période en y figeant la cible en vigueur, ou recalcule `done`.
+  Un trigger symétrique sur `objective_entry` fait de même pour les objectifs quantifiés.
+- Un **job par unité** (lundi 00:15 UTC, 1<sup>er</sup> du mois 00:15 UTC) ne s'occupe que
+  des périodes restées vides, pour qu'elles apparaissent à 0 dans les bilans plutôt que
+  d'être absentes. Il doit être idempotent et rattraper les périodes manquées s'il a échoué.
 - Le relevé **n'est pas immuable** : une tâche en retard cochée plus tard met à jour la
-  semaine concernée.
+  période concernée.
 - Pendant une période de clôture, **aucune ligne n'est produite**. Après réouverture, ces
-  semaines restent absentes plutôt que rattrapées à zéro : le relevé raconte quand
+  périodes restent absentes plutôt que rattrapées à zéro : le relevé raconte quand
   l'objectif était vivant, pas une suite d'échecs.
+
+**Régularité** (SPEC-REFONTE §1.3) : sur les **4 dernières périodes closes**, la part de
+l'attendu qui a été faite, **chaque période plafonnée à 100 %**. Une semaine à 5 séances sur 3
+ne rachète pas une semaine à 0 — on mesure un rythme, pas un volume. Une période close est
+strictement antérieure à la période courante : le chiffre ne bouge donc qu'au passage à la
+période suivante, jamais pendant qu'on la vit. Rater une période coûte 25 points et se répare
+seul quatre périodes plus tard — rien ne remet à zéro.
 
 ### 4.2 État hebdomadaire d'un objectif d'espace
 
 Un objectif d'espace ne porte aucune tâche. Son état se **déduit** de celui de ses forks —
-il n'a donc pas de ligne `objective_week` propre, on recalcule à la lecture. Une seule
+il n'a donc pas de ligne `objective_period` propre, on recalcule à la lecture. Une seule
 source de vérité : les forks.
 
 Trois valeurs :
@@ -443,8 +511,8 @@ personnelle aurait modifié des données collectives sans que les autres le sach
 
 | Élément | Motif |
 |---|---|
-| Progression (%) d'un objectif | Fausse mesure ; le verdict annuel la remplace |
-| Streak | Pénalisait par construction les cadences non quotidiennes |
+| ~~Progression (%) d'un objectif~~ | **Réintroduite** (REFONTE §0.1), mais **bornée par type** : une progression n'existe que si l'objectif porte une cible. Une habitude sans cible totale n'en a pas. |
+| ~~Streak~~ | **Remplacé** (REFONTE §0.1) par la régularité glissante sur 4 périodes closes, plafonnée à 100 % par période. Rien ne remet à zéro, donc plus de pénalité structurelle des cadences non quotidiennes. |
 | Pourcentage de progression des listes | Cohérence avec le reste |
 | Kanban et statuts | Source principale de la surcharge de `/tasks` |
 | Échelle de priorité | Remplacée par un drapeau |
@@ -452,7 +520,7 @@ personnelle aurait modifié des données collectives sans que les autres le sach
 | Vote à l'unanimité sur les objectifs d'espace | Supprime états, décompte, condition de course et écran |
 | Partenaire de responsabilité | Doublon d'un espace à deux |
 | Notion d'ami | Un réseau social entier pour une invitation |
-| Objectif quantifié | Écarté : le produit mesure la régularité, pas des quantités |
+| ~~Objectif quantifié~~ | **Réintroduit** (REFONTE §0.1) comme type de mesure à part entière — `measure = 'quantite'`, table `objective_entry`. |
 
 ---
 
@@ -478,7 +546,7 @@ personnelle aurait modifié des données collectives sans que les autres le sach
 3. `list`, `task` — la boucle de base, immédiatement utilisable
 4. Vue Tâches et ses prédicats
 5. `objective`, `milestone`, contraintes de slots
-6. `objective_week`, trigger de complétion, job hebdomadaire
+6. `objective_period`, trigger de complétion, jobs de backfill par unité
 7. Forks et objectifs d'espace
 8. `review` / `review_item`, les trois niveaux
 9. Sessions interactives et Realtime

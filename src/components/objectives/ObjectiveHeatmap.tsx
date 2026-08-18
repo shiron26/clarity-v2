@@ -1,35 +1,33 @@
 import { cn } from '../../lib/cn'
 import type { Objective } from '../../hooks/useObjectives'
-import type { ObjectiveWeek } from '../../hooks/useObjectiveWeeks'
-import { useElementWidth } from '../../hooks/useElementWidth'
-import { addDays, isoWeek, type IsoDate } from '../../lib/appDate'
-import { maskTitle, objectiveSkin } from '../../lib/objectivePalette'
+import type { ObjectivePeriod, PeriodUnit } from '../../hooks/useObjectivePeriods'
+import { addDays, formatMonthShort, type IsoDate } from '../../lib/appDate'
+import { comparePeriods, periodRef } from '../../lib/objectivePeriod'
+import { heatLevel } from '../../lib/objectiveState'
+import { maskTitle, objectiveSkinOf } from '../../lib/objectivePalette'
 
 const DAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 
-// Géométrie d'une colonne, en pixels — les mêmes nombres que les classes
-// arbitraires du JSX plus bas. Elles vivent ici pour que le calcul de « combien
-// de semaines tiennent » et le rendu ne puissent pas diverger.
-const CELL = 15 // size-[15px]
-const COL_PADDING = 3.5 // p-[3.5px]
-const COL_BORDER = 1 // border
-const COL_GAP = 3 // gap-[3px] entre colonnes
-const COL_WIDTH = CELL + COL_PADDING * 2 + COL_BORDER * 2 // 24px
+// Géométrie : une SEULE source. `--heat-cell` est la seule mesure qui varie ;
+// marges, écarts et rayons s'en déduisent en `calc()` dans les classes. C'est ce
+// qui met fin au doublon d'avant, où des constantes JS (`CELL`, `COL_STEP`)
+// répétaient des classes Tailwind arbitraires et pouvaient diverger en silence.
+//
+// Poser une custom property en style inline est l'exception minimale prévue par
+// AGENTS.md — une déclaration par composant, et non une par cellule. Le dépôt en
+// use déjà pour les particules de `ObjectiveCard` (`--tx` / `--ty`).
+const CELL_SIZES = {
+  sm: '11px',
+  md: '15px',
+  lg: '25px',
+} as const
 
-const COL_STEP = COL_WIDTH + COL_GAP // pas d'une colonne à la suivante
+export type HeatmapSize = keyof typeof CELL_SIZES | 'auto'
 
-/** Combien de colonnes tiennent dans `width` : n colonnes occupent
- *  `n * COL_WIDTH + (n - 1) * COL_GAP`. Au moins une, jamais plus que `max`. */
-function fitColumns(width: number, max: number): number {
-  return Math.max(1, Math.min(Math.floor((width + COL_GAP) / COL_STEP), max))
-}
-
-// Bandeau de mois : hauteur du texte + son écart à la grille. La colonne des
-// jours porte le même décalage en tête, sinon ses lettres ne tombent plus en
-// face des cases.
-const MONTH_ROW = 'mb-1 h-[11px]'
-
-const MONTH_FORMAT = new Intl.DateTimeFormat('fr-FR', { month: 'short', timeZone: 'UTC' })
+// Pas d'une colonne à la suivante : la case, ses deux marges internes (3.5px),
+// ses deux bordures (1px) et l'écart entre colonnes (3px) — soit `cell + 12`.
+// Sert uniquement à poser les libellés de mois au-dessus des bonnes colonnes.
+const COLUMN_STEP = 'calc(var(--heat-cell) + 12px)'
 
 // Un mois trop étroit n'est pas étiqueté : son libellé mordrait sur le suivant
 // (un trimestre commence souvent par une semaine à cheval sur le mois d'avant)
@@ -38,11 +36,11 @@ const MONTH_MIN_COLUMNS = 3
 
 /**
  * Un libellé par mois, à la colonne où ce mois commence — le mois d'une semaine
- * est celui de son lundi, comme sur l'écran Objectifs. La position est un décalage
- * en pixels et non une cellule de grille : le bandeau se pose ainsi au-dessus des
- * colonnes sans peser sur leur largeur.
+ * est celui de son lundi. La position est un décalage horizontal et non une
+ * cellule de grille : le bandeau se pose ainsi au-dessus des colonnes sans peser
+ * sur leur largeur.
  */
-function monthMarks(mondays: IsoDate[]): Array<{ key: string; label: string; left: number }> {
+function monthMarks(mondays: IsoDate[]): Array<{ key: string; label: string; index: number }> {
   const starts: Array<{ key: string; monday: IsoDate; index: number }> = []
   mondays.forEach((monday, index) => {
     const key = monday.slice(0, 7)
@@ -54,20 +52,19 @@ function monthMarks(mondays: IsoDate[]): Array<{ key: string; label: string; lef
     .filter((start, i) => (starts[i + 1]?.index ?? mondays.length) - start.index >= MONTH_MIN_COLUMNS)
     .map((start) => ({
       key: start.key,
-      label: MONTH_FORMAT.format(new Date(`${start.monday}T12:00:00Z`))
-        .replace('.', '')
-        .toUpperCase(),
-      left: start.index * COL_STEP,
+      label: formatMonthShort(start.monday).toUpperCase(),
+      index: start.index,
     }))
 }
 
 type ObjectiveHeatmapProps = {
   objective: Objective
-  /** Lundis des semaines à afficher — trimestre sur le dashboard, 13 dernières
-   *  semaines sur l'écran Objectifs. */
+  /** Lundis des semaines à afficher, dans l'ordre. */
   weeks: IsoDate[]
-  /** `objectifId|semaineISO` → relevé hebdomadaire. */
-  weekIndex: Map<string, ObjectiveWeek>
+  /** Relevés de CET objectif. La colonne résout sa période elle-même. */
+  periods: ObjectivePeriod[]
+  /** L'unité des relevés : une colonne reste une semaine, la période non. */
+  unit: PeriodUnit
   /** `objectifId|jour` → ce jour a été crédité. */
   activeDays: Set<string>
   today: IsoDate
@@ -78,87 +75,84 @@ type ObjectiveHeatmapProps = {
   showMonthLabels?: boolean
   /** Pastille de couleur + titre au-dessus de la grille. */
   showHeader?: boolean
-  /** Ne jamais déborder : si la place manque, les semaines les plus anciennes
-   *  sont retirées plutôt que de faire défiler la grille. Suppose un parent qui
-   *  contraint la largeur (`min-w-0` dans une grille ou un flex). */
-  fit?: boolean
+  /** `auto` = 11 px au doigt, 25 px au curseur (les valeurs de la maquette). */
+  size?: HeatmapSize
+  className?: string
 }
 
+/**
+ * La grille de densité d'un objectif : une colonne par semaine, une case par
+ * jour.
+ *
+ * **L'intensité dit ce qui a été fait dans la période, pas depuis combien de
+ * temps ça dure** (`heatLevel`, REFONTE §0.1). Le cadre autour d'une colonne dit
+ * autre chose et le dit seul : la période a atteint sa cible.
+ */
 export function ObjectiveHeatmap({
   objective,
   weeks,
-  weekIndex,
+  periods,
+  unit,
   activeDays,
   today,
   privacy = false,
   showDayLabels = false,
   showMonthLabels = false,
   showHeader = true,
-  fit = false,
+  size = 'auto',
+  className,
 }: ObjectiveHeatmapProps) {
-  const skin = objectiveSkin(objective.slot)
-  const [gridRef, gridWidth] = useElementWidth<HTMLDivElement>()
-
-  // La série chauffe : plus les semaines tenues s'enchaînent, plus la rampe
-  // monte. `run` se remet à zéro dès qu'une semaine passée n'atteint pas la
-  // cadence ; la semaine en cours ne casse pas la série, elle n'est pas finie.
-  let run = 0
+  const skin = objectiveSkinOf(objective)
 
   const columns = weeks.map((monday) => {
-    const { isoWeek: weekNo } = isoWeek(monday)
-    const record = weekIndex.get(`${objective.id}|${weekNo}`)
     const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i))
     const isCurrent = monday <= today && today <= days[6]!
     const isFuture = monday > today
 
-    // « Semaine tenue » se lit dans objective_week (source de vérité), jamais
+    // La période d'une colonne n'est pas forcément sa semaine : une habitude
+    // mensuelle fait partager la même teinte à toutes les colonnes d'un mois.
+    // C'est voulu — « ce mois-là a été dense » — et non un défaut d'alignement.
+    const ref = periodRef(unit, monday)
+    const record = periods.find(
+      (p) =>
+        p.period_unit === unit &&
+        comparePeriods({ periodYear: p.period_year, periodIndex: p.period_index }, ref) === 0,
+    )
+
+    // « Période tenue » se lit dans objective_period (source de vérité), jamais
     // d'un comptage des cases : les deux peuvent différer sur une période
     // clôturée, et c'est le relevé qui fait foi.
-    const held = !!record && record.active_days >= record.cadence_target
-    if (isFuture) {
-      // rien
-    } else if (isCurrent) {
-      // la semaine en cours est en sursis : elle ne rompt pas la série
-    } else if (held) {
-      run += 1
-    } else {
-      run = 0
-    }
-
-    const heat = skin.ramp[Math.min(Math.max(run - 1, 0), 5)]!
+    const held = !!record && record.done >= record.target
+    const heat = skin.ramp[heatLevel(record?.done ?? 0, record?.target ?? 0)]!
 
     return { monday, days, isCurrent, isFuture, held, heat }
   })
 
-  // La troncature est purement visuelle : `run` a déjà couru sur tout le
-  // trimestre ci-dessus, donc les couleurs des colonnes restantes sont celles
-  // qu'elles auraient eues avec la grille complète. Couper `weeks` en amont
-  // aurait redémarré la série et menti sur la rampe.
-  const visible =
-    fit && gridWidth !== null
-      ? columns.slice(-fitColumns(gridWidth, columns.length))
-      : columns
+  const cell = size === 'auto' ? undefined : CELL_SIZES[size]
 
   return (
-    <div className={cn(fit && 'min-w-0')}>
+    <div
+      className={cn(size === 'auto' && '[--heat-cell:11px] lg:[--heat-cell:25px]', className)}
+      style={cell ? ({ '--heat-cell': cell } as React.CSSProperties) : undefined}
+    >
       {showHeader && (
         <div className="mb-3 flex items-center gap-2">
           <span className="size-[7px] shrink-0 rounded-full" style={{ backgroundColor: skin.hue }} />
-          <span className="truncate text-body font-semibold text-[#d5d6e0]">
+          <span className="truncate text-body font-semibold text-ink-onnight-strong">
             {privacy ? maskTitle(objective.title) : objective.title}
           </span>
         </div>
       )}
 
-      <div className={cn('flex gap-[3px]', fit ? 'overflow-hidden' : 'overflow-x-auto')}>
+      <div className="flex gap-[3px] overflow-x-auto">
         {showDayLabels && (
           <div className="flex shrink-0 flex-col py-[4.5px] pr-[2px]">
-            {showMonthLabels && <span aria-hidden className={MONTH_ROW} />}
+            {showMonthLabels && <span aria-hidden className="mb-1 h-[11px]" />}
             {DAY_LABELS.map((label, i) => (
               <span
                 key={i}
                 aria-hidden
-                className="mb-[3.5px] h-[15px] text-center text-[8.5px] leading-[15px] text-[#565866]"
+                className="mb-[3.5px] flex h-(--heat-cell) items-center justify-center text-[8.5px] text-ink-onnight-faint"
               >
                 {label}
               </span>
@@ -166,20 +160,14 @@ export function ObjectiveHeatmap({
           </div>
         )}
 
-        {/* La mesure porte sur les colonnes seules : la colonne de libellés est
-            hors du compte, sinon elle ferait disparaître une semaine de plus
-            que nécessaire. */}
-        <div
-          ref={gridRef}
-          className={cn('flex flex-col', fit ? 'min-w-0 flex-1' : 'shrink-0')}
-        >
+        <div className="flex shrink-0 flex-col">
           {showMonthLabels && (
-            <div className={cn('relative overflow-hidden', MONTH_ROW)}>
-              {monthMarks(visible.map((col) => col.monday)).map((mark) => (
+            <div className="relative mb-1 h-[11px] overflow-hidden">
+              {monthMarks(columns.map((col) => col.monday)).map((mark) => (
                 <span
                   key={mark.key}
-                  className="absolute top-0 text-[8.5px] leading-[11px] whitespace-nowrap text-[#565866]"
-                  style={{ left: mark.left }}
+                  className="absolute top-0 text-[8.5px] leading-[11px] whitespace-nowrap text-ink-onnight-faint"
+                  style={{ left: `calc(${COLUMN_STEP} * ${mark.index})` }}
                 >
                   {mark.label}
                 </span>
@@ -188,13 +176,11 @@ export function ObjectiveHeatmap({
           )}
 
           <div className="flex gap-[3px]">
-            {visible.map((col) => (
+            {columns.map((col) => (
               <div
                 key={col.monday}
                 title={`Semaine du ${col.monday}`}
-                // rayons hors échelle du design system : à 15px, `rounded-sm` (9px)
-                // transformerait les cases en pastilles.
-                className="flex shrink-0 flex-col gap-[3.5px] rounded-[8px] border border-transparent p-[3.5px]"
+                className="flex shrink-0 flex-col gap-[3.5px] rounded-[calc(var(--heat-cell)/2.5)] border border-transparent p-[3.5px]"
                 style={
                   col.held
                     ? { backgroundColor: `${col.heat}30`, borderColor: `${col.heat}cc` }
@@ -208,22 +194,20 @@ export function ObjectiveHeatmap({
                     <span
                       key={day}
                       className={cn(
-                        'size-[15px] rounded-[4px]',
+                        'size-(--heat-cell) rounded-[calc(var(--heat-cell)/3.75)]',
                         active && isToday && 'animate-cell-pulse',
-                        !active && (col.isFuture || day > today) && 'border border-[#262734]',
-                      )}
-                      // Trois creux distincts, jamais `transparent` : une case
-                      // invisible fait lire la grille comme décalée à droite, un
-                      // trimestre encore vide n'affichant alors que son futur.
-                      style={{
-                        backgroundColor: active
-                          ? col.heat
-                          : day > today
-                            ? '#1b1c24' // à venir — c'est son liseré qui le dit
+                        !active && (col.isFuture || day > today) && 'border border-heat-future-line',
+                        // Trois creux distincts, jamais `transparent` : une case
+                        // invisible fait lire la grille comme décalée à droite,
+                        // un trimestre encore vide n'affichant alors que son futur.
+                        !active &&
+                          (day > today
+                            ? 'bg-heat-future'
                             : col.isCurrent
-                              ? '#34364a' // cette semaine, encore jouable
-                              : '#20212c', // passé sans séance
-                      }}
+                              ? 'bg-heat-live'
+                              : 'bg-heat-empty'),
+                      )}
+                      style={active ? { backgroundColor: col.heat } : undefined}
                     />
                   )
                 })}

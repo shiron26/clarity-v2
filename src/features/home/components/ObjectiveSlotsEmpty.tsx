@@ -4,18 +4,22 @@ import { objectiveSkin, PRINCIPAL_SLOTS } from '../../../lib/objectivePalette'
 // État vide de la section Objectifs : trois emplacements à remplir, un par slot.
 // Les slots sont figés (SPEC §3) — c'est bien « le premier / deuxième /
 // troisième emplacement », pas une liste qui se décale.
+//
+// Ici, et ici seulement, les invitations SONT le contenu de l'écran : il n'y a
+// rien d'autre à montrer. Dès qu'un objectif existe, elles se réduisent à
+// `ObjectiveSlotInvite` — sinon une place vide se lirait comme un manque.
 const PROMPTS = [
   {
     title: 'Votre premier objectif',
-    body: 'Un projet qui compte pour votre année, mesurable chaque semaine.',
+    body: 'Sur l’année ou sur un trimestre — c’est vous qui voyez.',
   },
   {
     title: 'Votre deuxième objectif',
-    body: 'Trois maximum : c’est ce qui garde le cap lisible.',
+    body: 'Trois maximum à la fois : c’est ce qui garde le cap lisible.',
   },
   {
     title: 'Votre troisième objectif',
-    body: 'Le reste peut attendre en objectif secondaire.',
+    body: 'Un trimestriel libère sa place au trimestre suivant.',
   },
 ]
 
@@ -26,7 +30,7 @@ export function ObjectiveSlotsEmpty() {
         <Link
           key={slot}
           to="/objectifs"
-          className="flex min-h-[172px] flex-col items-center justify-center gap-2.5 rounded-[18px] border-[1.5px] border-dashed border-border-strong bg-surface-sidebar px-4.5 py-5.5 text-center transition-[border-color,background-color,transform] duration-150 hover:-translate-y-0.5 hover:border-[#a9beff] hover:bg-[#f4f7ff] focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none active:translate-y-0"
+          className="flex min-h-[172px] flex-col items-center justify-center gap-2.5 rounded-[18px] border-[1.5px] border-dashed border-border-strong bg-surface-sidebar px-4.5 py-5.5 text-center transition-[border-color,background-color,transform] duration-150 hover:-translate-y-0.5 hover:border-border-primary-soft hover:bg-primary-tint focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none active:translate-y-0"
         >
           <span
             className="flex size-9.5 items-center justify-center rounded-lg text-[19px] text-white opacity-90"

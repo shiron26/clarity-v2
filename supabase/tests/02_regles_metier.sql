@@ -23,16 +23,30 @@ declare
   v_obj2 uuid;
   v_space_obj uuid;   -- principal d'espace
   v_secondary uuid;   -- secondaire perso de A
+  v_quant uuid;       -- secondaire quantifié mensuel de A
+  v_annual uuid;      -- annuel de l'année suivante (tests de fenêtre)
   v_fork_a uuid;
   v_fork_b uuid;
   v_task uuid;
+  v_entry uuid;
+  v_session uuid;
   v_review uuid;
+  v_qreview uuid;     -- bilan de trimestre (verdict et note y coexistent)
+  v_rating smallint;
+  v_achieved boolean;
   v_obj_check uuid;
   v_count int;
   v_slot int;
+  v_i int;
   v_date date;
+  v_seen date;      -- dernière visite (REFONTE §9)
   v_days int;
   v_target int;
+  v_value numeric;
+  v_reg_done int;
+  v_reg_target int;
+  v_reg_pdone int;
+  v_reg_ptarget int;
   v_done timestamptz;
   v_done2 timestamptz;
 begin
@@ -59,14 +73,14 @@ begin
 
   -- =========================================================================
   -- 2. Slots : plus petit slot libre, plein, libération par suppression,
-  --    conservation par clôture
+  --    conservation par clôture, et unicité PAR FENÊTRE (REFONTE §1.1)
   -- =========================================================================
-  insert into public.objective (user_id, year, kind, label, title, cadence)
-  values (ua, v_year, 'principal', 'OBJ1', 'objectif 1', 3) returning id into v_obj;
-  insert into public.objective (user_id, year, kind, label, title, cadence)
-  values (ua, v_year, 'principal', 'OBJ2', 'objectif 2', 2) returning id into v_obj2;
-  insert into public.objective (user_id, year, kind, label, title, cadence)
-  values (ua, v_year, 'principal', 'OBJ3', 'objectif 3', 7);
+  insert into public.objective (user_id, year, kind, label, title, measure, period_unit, cadence)
+  values (ua, v_year, 'principal', 'OBJ1', 'objectif 1', 'habitude', 'week', 3) returning id into v_obj;
+  insert into public.objective (user_id, year, kind, label, title, measure, period_unit, cadence)
+  values (ua, v_year, 'principal', 'OBJ2', 'objectif 2', 'habitude', 'week', 2) returning id into v_obj2;
+  insert into public.objective (user_id, year, kind, label, title, measure, period_unit, cadence)
+  values (ua, v_year, 'principal', 'OBJ3', 'objectif 3', 'habitude', 'week', 7);
 
   select slot into v_slot from public.objective where id = v_obj2;
   if v_slot = 2 then
@@ -76,8 +90,8 @@ begin
   end if;
 
   begin
-    insert into public.objective (user_id, year, kind, label, title, cadence)
-    values (ua, v_year, 'principal', 'OBJ4', 'objectif 4', 1);
+    insert into public.objective (user_id, year, kind, label, title, measure, period_unit, cadence)
+    values (ua, v_year, 'principal', 'OBJ4', 'objectif 4', 'habitude', 'week', 1);
     raise exception 'FAIL: 4e principal accepté';
   exception when raise_exception then
     if sqlerrm like '%slot_full%' then
@@ -85,11 +99,11 @@ begin
     else raise; end if;
   end;
 
-  -- clôturer ne libère pas le slot
+  -- clôturer ne libère pas le slot : c'est la fin de la FENÊTRE qui le libère
   update public.objective set closed_at = now() where id = v_obj2;
   begin
-    insert into public.objective (user_id, year, kind, label, title, cadence)
-    values (ua, v_year, 'principal', 'OBJ4', 'objectif 4', 1);
+    insert into public.objective (user_id, year, kind, label, title, measure, period_unit, cadence)
+    values (ua, v_year, 'principal', 'OBJ4', 'objectif 4', 'habitude', 'week', 1);
     raise exception 'FAIL: le slot d''un objectif clôturé a été réattribué';
   exception when raise_exception then
     if sqlerrm like '%slot_full%' then
@@ -100,8 +114,9 @@ begin
 
   -- supprimer libère le slot sans décaler les autres
   delete from public.objective where id = v_obj2;
-  insert into public.objective (user_id, year, kind, label, title, cadence)
-  values (ua, v_year, 'principal', 'OBJ2b', 'objectif 2 bis', 2) returning id into v_obj2;
+  insert into public.objective (user_id, year, kind, label, title, measure, period_unit, cadence)
+  values (ua, v_year, 'principal', 'OBJ2b', 'objectif 2 bis', 'habitude', 'week', 2)
+  returning id into v_obj2;
   select slot into v_slot from public.objective where id = v_obj2;
   if v_slot = 2 then
     raise notice 'OK: le slot libéré (2) est réattribué';
@@ -109,37 +124,108 @@ begin
     raise exception 'FAIL: slot réattribué = %', v_slot;
   end if;
 
+  -- Fenêtres : l'année suivante est vierge, les trois slots y sont libres.
+  -- Deux trimestres DISJOINTS partagent un slot — c'est ce qui fait passer de
+  -- trois principaux par an à trois principaux SIMULTANÉS.
+  insert into public.objective (user_id, year, quarter, kind, label, title, measure, period_unit, cadence)
+  values (ua, v_year + 1, 1, 'principal', 'T1', 'objectif T1', 'habitude', 'week', 3);
+  insert into public.objective (user_id, year, quarter, kind, label, title, measure, period_unit, cadence)
+  values (ua, v_year + 1, 3, 'principal', 'T3', 'objectif T3', 'habitude', 'week', 3);
+
+  select count(*) into v_count from public.objective
+  where user_id = ua and year = v_year + 1 and slot = 1;
+  if v_count = 2 then
+    raise notice 'OK: T1 et T3 partagent le slot 1 (fenêtres disjointes)';
+  else
+    raise exception 'FAIL: % objectif(s) sur le slot 1 de %', v_count, v_year + 1;
+  end if;
+
+  -- Un annuel chevauche T1 et T3 : l'attribution saute le slot 1.
+  insert into public.objective (user_id, year, kind, label, title, measure, period_unit, cadence)
+  values (ua, v_year + 1, 'principal', 'ANN', 'objectif annuel', 'habitude', 'week', 3)
+  returning id into v_annual;
+  select slot into v_slot from public.objective where id = v_annual;
+  if v_slot = 2 then
+    raise notice 'OK: l''annuel saute le slot 1, occupé sur des fenêtres qui le chevauchent';
+  else
+    raise exception 'FAIL: l''annuel a pris le slot %', v_slot;
+  end if;
+
+  -- …et forcer le slot de l'annuel sur un T2 (fenêtres chevauchantes) est
+  -- refusé par la contrainte d'exclusion, pas par un trigger.
+  begin
+    insert into public.objective (user_id, year, quarter, kind, slot, label, title,
+                                  measure, period_unit, cadence)
+    values (ua, v_year + 1, 2, 'principal', 2, 'T2', 'objectif T2', 'habitude', 'week', 3);
+    raise exception 'FAIL: un T2 a pris le slot d''un objectif annuel';
+  exception when exclusion_violation then
+    raise notice 'OK: annuel et T2 ne partagent pas un slot (fenêtres chevauchantes)';
+  end;
+
   -- =========================================================================
-  -- 3. Cadence : interdite sur un secondaire, obligatoire sur un principal perso
+  -- 3. Mesure : la forme par type, et qui a le droit d'être une habitude
   -- =========================================================================
   begin
-    insert into public.objective (user_id, year, kind, label, title, cadence)
-    values (ua, v_year, 'secondaire', 'SEC', 'secondaire', 3);
-    raise exception 'FAIL: cadence acceptée sur un secondaire';
+    insert into public.objective (user_id, year, kind, label, title, measure, period_unit, cadence)
+    values (ua, v_year, 'secondaire', 'SEC', 'secondaire', 'habitude', 'week', 3);
+    raise exception 'FAIL: habitude acceptée sur un secondaire';
   exception when check_violation then
-    raise notice 'OK: cadence refusée sur un secondaire';
+    raise notice 'OK: un secondaire n''est jamais une habitude';
+  end;
+  begin
+    insert into public.objective (space_id, year, kind, label, title, measure, period_unit, cadence)
+    values (v_space, v_year, 'principal', 'ESPH', 'espace à cadence', 'habitude', 'week', 3);
+    raise exception 'FAIL: habitude acceptée sur un objectif d''espace';
+  exception when check_violation then
+    raise notice 'OK: un objectif d''espace n''a pas de rythme propre';
   end;
   begin
     -- année suivante : les slots de l'année courante sont déjà pleins
-    insert into public.objective (user_id, year, kind, label, title)
-    values (ua, v_year + 1, 'principal', 'NOCAD', 'sans cadence');
-    raise exception 'FAIL: principal perso sans cadence accepté';
+    insert into public.objective (user_id, year, kind, label, title, measure, period_unit)
+    values (ua, v_year + 2, 'principal', 'NOCAD', 'sans cadence', 'habitude', 'week');
+    raise exception 'FAIL: habitude sans cadence acceptée';
   exception when check_violation then
-    raise notice 'OK: cadence obligatoire sur un principal perso';
+    raise notice 'OK: cadence obligatoire sur une habitude';
   end;
-  insert into public.objective (user_id, year, kind, label, title)
-  values (ua, v_year, 'secondaire', 'SEC', 'secondaire') returning id into v_secondary;
+  begin
+    insert into public.objective (user_id, year, kind, label, title, measure, period_unit, cadence)
+    values (ua, v_year + 2, 'principal', 'CAD8', 'huit par semaine', 'habitude', 'week', 8);
+    raise exception 'FAIL: cadence 8 acceptée en hebdomadaire';
+  exception when check_violation then
+    raise notice 'OK: cadence bornée à 7 quand la période est la semaine';
+  end;
+  begin
+    insert into public.objective (user_id, year, kind, label, title, measure, period_unit, entry_mode, direction)
+    values (ua, v_year + 2, 'principal', 'NOTGT', 'quantité sans cible', 'quantite', 'month', 'cumul', 'atteindre');
+    raise exception 'FAIL: quantité sans cible acceptée';
+  exception when check_violation then
+    raise notice 'OK: target_value obligatoire sur une quantité';
+  end;
+  begin
+    insert into public.objective (user_id, year, kind, label, title, measure, period_unit, cadence)
+    values (ua, v_year + 2, 'principal', 'JALCAD', 'jalons à cadence', 'jalons', null, 2);
+    raise exception 'FAIL: cadence acceptée sur des jalons';
+  exception when check_violation then
+    raise notice 'OK: pas de cadence sur des jalons';
+  end;
+  -- une cadence de 8 est légitime au mois
+  insert into public.objective (user_id, year, kind, label, title, measure, period_unit, cadence)
+  values (ua, v_year + 2, 'principal', 'CAD8M', 'huit par mois', 'habitude', 'month', 8);
+  raise notice 'OK: cadence 8 acceptée quand la période est le mois';
+
+  insert into public.objective (user_id, year, kind, label, title, measure)
+  values (ua, v_year, 'secondaire', 'SEC', 'secondaire', 'jalons') returning id into v_secondary;
 
   -- =========================================================================
   -- 4. Fork : parent principal d'espace uniquement, un par membre, restrict
   -- =========================================================================
-  insert into public.objective (space_id, year, kind, label, title)
-  values (v_space, v_year, 'principal', 'ESP', 'objectif d''espace')
+  insert into public.objective (space_id, year, kind, label, title, measure)
+  values (v_space, v_year, 'principal', 'ESP', 'objectif d''espace', 'jalons')
   returning id into v_space_obj;
 
   begin
-    insert into public.objective (user_id, parent_objective_id, year, label, title, cadence)
-    values (ua, v_secondary, v_year, 'F', 'fork de secondaire', 2);
+    insert into public.objective (user_id, parent_objective_id, year, label, title, measure, period_unit, cadence)
+    values (ua, v_secondary, v_year, 'F', 'fork de secondaire', 'habitude', 'week', 2);
     raise exception 'FAIL: fork d''un secondaire accepté';
   exception when raise_exception then
     if sqlerrm like '%fork_parent_must_be_space_principal%' then
@@ -147,12 +233,12 @@ begin
     else raise; end if;
   end;
 
-  insert into public.objective (user_id, parent_objective_id, year, label, title, cadence)
-  values (ua, v_space_obj, v_year, 'F-A', 'fork de A', 2) returning id into v_fork_a;
+  insert into public.objective (user_id, parent_objective_id, year, label, title, measure, period_unit, cadence)
+  values (ua, v_space_obj, v_year, 'F-A', 'fork de A', 'habitude', 'week', 2) returning id into v_fork_a;
 
   begin
-    insert into public.objective (user_id, parent_objective_id, year, label, title, cadence)
-    values (ua, v_space_obj, v_year, 'F-A2', 'fork 2 de A', 3);
+    insert into public.objective (user_id, parent_objective_id, year, label, title, measure, period_unit, cadence)
+    values (ua, v_space_obj, v_year, 'F-A2', 'fork 2 de A', 'habitude', 'week', 3);
     raise exception 'FAIL: second fork du même membre accepté';
   exception when unique_violation then
     raise notice 'OK: un seul fork par membre et par objectif';
@@ -168,14 +254,14 @@ begin
   -- B (membre) forke aussi ; E (non-membre) ne peut pas
   perform set_config('request.jwt.claims',
     '{"sub":"00000000-0000-0000-0000-00000000000b","role":"authenticated"}', true);
-  insert into public.objective (user_id, parent_objective_id, year, label, title, cadence)
-  values (ub, v_space_obj, v_year, 'F-B', 'fork de B', 1) returning id into v_fork_b;
+  insert into public.objective (user_id, parent_objective_id, year, label, title, measure, period_unit, cadence)
+  values (ub, v_space_obj, v_year, 'F-B', 'fork de B', 'habitude', 'week', 1) returning id into v_fork_b;
 
   perform set_config('request.jwt.claims',
     '{"sub":"00000000-0000-0000-0000-00000000000e","role":"authenticated"}', true);
   begin
-    insert into public.objective (user_id, parent_objective_id, year, label, title, cadence)
-    values ('00000000-0000-0000-0000-00000000000e', v_space_obj, v_year, 'F-E', 'fork de E', 1);
+    insert into public.objective (user_id, parent_objective_id, year, label, title, measure, period_unit, cadence)
+    values ('00000000-0000-0000-0000-00000000000e', v_space_obj, v_year, 'F-E', 'fork de E', 'habitude', 'week', 1);
     raise exception 'FAIL: fork par un non-membre accepté';
   exception when raise_exception then
     if sqlerrm like '%fork_author_not_member%' then
@@ -248,8 +334,8 @@ begin
   values (v_space, 'tâche partagée sur fork A', v_fork_a);
 
   -- =========================================================================
-  -- 7. objective_week : jours distincts, complétion tardive, recalcul,
-  --    cadence figée, bord d'année ISO
+  -- 7. objective_period : jours distincts, complétion tardive, recalcul,
+  --    cible figée (REFONTE §1.3 — la table s'appelait objective_week)
   -- =========================================================================
   insert into public.task (user_id, title, objective_id) values (ua, 't1', v_obj);
   insert into public.task (user_id, title, objective_id) values (ua, 't2', v_obj);
@@ -258,56 +344,62 @@ begin
 
   update public.task set completed_at = now() where objective_id = v_obj and user_id = ua;
 
-  select active_days, cadence_target into v_days, v_target
-  from public.objective_week
+  select done, target into v_days, v_target
+  from public.objective_period
   where objective_id = v_obj
-    and iso_year = extract(isoyear from private.today())::int
-    and iso_week = extract(week from private.today())::int;
+    and period_unit  = 'week'
+    and period_year  = private.period_year('week', private.period_start('week', private.today()))
+    and period_index = private.period_index('week', private.period_start('week', private.today()));
   if v_days = 1 and v_target = 3 then
-    raise notice 'OK: 3 tâches le même jour = 1 jour actif, cadence figée à 3';
+    raise notice 'OK: 3 tâches le même jour = 1 jour actif, cible figée à 3';
   else
-    raise exception 'FAIL: active_days=%, cadence_target=%', v_days, v_target;
+    raise exception 'FAIL: done=%, target=%', v_days, v_target;
   end if;
 
   -- décocher → recalcul
   update public.task set completed_at = null
   where objective_id = v_obj and user_id = ua;
-  select active_days into v_days from public.objective_week
+  select done into v_days from public.objective_period
   where objective_id = v_obj
-    and iso_week = extract(week from private.today())::int
-    and iso_year = extract(isoyear from private.today())::int;
+    and period_unit  = 'week'
+    and period_year  = private.period_year('week', private.period_start('week', private.today()))
+    and period_index = private.period_index('week', private.period_start('week', private.today()));
   if v_days = 0 then
     raise notice 'OK: décochage → recalcul à 0';
   else
-    raise exception 'FAIL: après décochage active_days=%', v_days;
+    raise exception 'FAIL: après décochage done=%', v_days;
   end if;
 
   -- cadence modifiée : la cible déjà figée ne bouge pas
   update public.objective set cadence = 5 where id = v_obj;
   update public.task set completed_at = now() where id = v_task;
-  select cadence_target into v_target from public.objective_week
+  select target into v_target from public.objective_period
   where objective_id = v_obj
-    and iso_week = extract(week from private.today())::int
-    and iso_year = extract(isoyear from private.today())::int;
+    and period_unit  = 'week'
+    and period_year  = private.period_year('week', private.period_start('week', private.today()))
+    and period_index = private.period_index('week', private.period_start('week', private.today()));
   if v_target = 3 then
-    raise notice 'OK: cadence_target reste figée à 3 malgré la cadence passée à 5';
+    raise notice 'OK: target reste figée à 3 malgré la cadence passée à 5';
   else
-    raise exception 'FAIL: cadence_target réécrite à %', v_target;
+    raise exception 'FAIL: target réécrite à %', v_target;
   end if;
 
-  -- complétion tardive : échéance passée → on crédite la semaine de l'échéance
-  v_date := private.today() - 14;
+  -- Complétion tardive : échéance passée → on crédite la PÉRIODE de l'échéance.
+  -- Bornée au 1er janvier : la fenêtre d'un objectif annuel s'arrête là, et
+  -- refresh_objective_period ne produit rien hors fenêtre.
+  v_date := greatest(private.today() - 14, make_date(v_year, 1, 1));
   insert into public.task (user_id, title, objective_id, due_date)
   values (ua, 'tâche en retard', v_obj, v_date) returning id into v_task;
   update public.task set completed_at = now() where id = v_task;
-  select active_days into v_days from public.objective_week
+  select done into v_days from public.objective_period
   where objective_id = v_obj
-    and iso_year = extract(isoyear from v_date)::int
-    and iso_week = extract(week from v_date)::int;
-  if v_days = 1 then
-    raise notice 'OK: complétion tardive créditée sur la semaine de l''échéance';
+    and period_unit  = 'week'
+    and period_year  = private.period_year('week', private.period_start('week', v_date))
+    and period_index = private.period_index('week', private.period_start('week', v_date));
+  if v_days >= 1 then
+    raise notice 'OK: complétion tardive créditée sur la période de l''échéance';
   else
-    raise exception 'FAIL: semaine de l''échéance active_days=%', v_days;
+    raise exception 'FAIL: période de l''échéance done=%', v_days;
   end if;
 
   -- completed_at est posé par le serveur : la valeur du client n'est lue que
@@ -423,10 +515,10 @@ begin
   begin
     insert into public.review_item (review_id, objective_id, achieved)
     values (v_review, v_obj2, true);
-    raise exception 'FAIL: verdict annuel accepté en hebdo';
+    raise exception 'FAIL: verdict accepté en hebdo';
   exception when raise_exception then
     if sqlerrm like '%achieved_year_only%' then
-      raise notice 'OK: verdict atteint/non réservé au bilan annuel';
+      raise notice 'OK: le verdict atteint/non ne se pose pas sur une semaine';
     else raise; end if;
   end;
 
@@ -439,6 +531,61 @@ begin
       raise notice 'OK: commentaire limité à 280 caractères';
     else raise; end if;
   end;
+
+  -- Bilan de trimestre (REFONTE §8) : les deux formes y coexistent, parce que
+  -- deux objectifs de la même session n'y sont pas au même stade — celui dont la
+  -- fenêtre se ferme reçoit un verdict, celui qui continue reçoit une note.
+  -- L'exclusivité porte donc sur la LIGNE, pas sur le niveau.
+  insert into public.review (period_type, period_year, period_index, user_id)
+  values ('quarter', v_year, 3, ua) returning id into v_qreview;
+
+  insert into public.review_item (review_id, objective_id, achieved, comment)
+  values (v_qreview, v_obj, true, 'trimestre bouclé');
+  select achieved into v_achieved from public.review_item
+  where review_id = v_qreview and objective_id = v_obj;
+  if v_achieved then
+    raise notice 'OK: le verdict atteint/non est accepté au bilan trimestriel';
+  else
+    raise exception 'FAIL: achieved = % au trimestre', v_achieved;
+  end if;
+
+  insert into public.review_item (review_id, objective_id, rating)
+  values (v_qreview, v_obj2, 3);
+  raise notice 'OK: la note en fusées reste acceptée au bilan trimestriel';
+
+  begin
+    insert into public.review_item (review_id, objective_id, rating, achieved)
+    values (v_qreview, v_secondary, 2, false);
+    raise exception 'FAIL: note et verdict acceptés sur la même ligne';
+  exception when raise_exception then
+    if sqlerrm like '%review_item_verdict_exclusive%' then
+      raise notice 'OK: un objectif se note OU reçoit un verdict, pas les deux';
+    else raise; end if;
+  end;
+
+  -- Le piège de l'UPDATE : `new` porte les valeurs anciennes des colonnes hors
+  -- SET, donc poser un verdict sur une ligne déjà notée déclenche l'exclusivité
+  -- sans que le client n'ait renvoyé la note. C'est ce qui oblige le front à
+  -- effacer l'autre champ dans le même patch.
+  begin
+    update public.review_item set achieved = true
+    where review_id = v_qreview and objective_id = v_obj2;
+    raise exception 'FAIL: verdict posé par-dessus une note existante';
+  exception when raise_exception then
+    if sqlerrm like '%review_item_verdict_exclusive%' then
+      raise notice 'OK: basculer note → verdict exige d’effacer la note';
+    else raise; end if;
+  end;
+
+  update public.review_item set rating = null, achieved = true
+  where review_id = v_qreview and objective_id = v_obj2;
+  select rating, achieved into v_rating, v_achieved from public.review_item
+  where review_id = v_qreview and objective_id = v_obj2;
+  if v_rating is null and v_achieved then
+    raise notice 'OK: la bascule passe quand les deux champs partent ensemble';
+  else
+    raise exception 'FAIL: rating = %, achieved = %', v_rating, v_achieved;
+  end if;
 
   -- review d'espace : chacun ne note que SES forks ; seul le créateur valide
   insert into public.review (period_type, period_year, period_index, space_id)
@@ -554,21 +701,404 @@ begin
     raise exception 'FAIL: tâche d''espace reportée';
   end if;
 
-  -- =========================================================================
-  -- 11. Backfill hebdomadaire : semaines vides à 0, idempotent
-  -- =========================================================================
-  update private.objective set created_at = now() - interval '21 days' where id = v_obj2;
-  select private.backfill_objective_weeks() into v_count;
-  if v_count >= 3 then
-    raise notice 'OK: backfill remplit les semaines vides (% lignes)', v_count;
+  -- Jumelle du report : sortir du calendrier plutôt que repousser d'un jour.
+  insert into public.task (user_id, title, due_date)
+  values (ua, 'perso a dater plus tard', private.today() - 3);
+
+  select public.undate_overdue_tasks() into v_count;
+  if v_count >= 1 then
+    raise notice 'OK: mise sans date en masse (% tâche(s) perso)', v_count;
   else
-    raise exception 'FAIL: backfill n''a créé que % lignes', v_count;
+    raise exception 'FAIL: mise sans date count=%', v_count;
   end if;
-  select private.backfill_objective_weeks() into v_count;
-  if v_count = 0 then
-    raise notice 'OK: backfill idempotent (0 ligne au second passage)';
+  select count(*) into v_count from public.task
+  where user_id = ua and title = 'perso a dater plus tard' and due_date is null;
+  if v_count = 1 then
+    raise notice 'OK: la tâche personnelle a perdu sa date';
   else
-    raise exception 'FAIL: backfill non idempotent (% lignes)', v_count;
+    raise exception 'FAIL: la tâche personnelle a gardé sa date';
+  end if;
+  select count(*) into v_count from public.task
+  where space_id = v_space and due_date < private.today() and completed_at is null;
+  if v_count = 1 then
+    raise notice 'OK: les tâches d''espace ne sont jamais mises sans date';
+  else
+    raise exception 'FAIL: tâche d''espace mise sans date';
+  end if;
+
+  -- =========================================================================
+  -- 11. Backfill hebdomadaire : périodes vides à 0, idempotent
+  -- =========================================================================
+  -- created_at s'antidate en écrivant directement dans private : la vue ne
+  -- l'expose pas en écriture (c'est une colonne serveur).
+  update private.objective set created_at = now() - interval '21 days' where id = v_obj2;
+  select private.backfill_objective_periods('week') into v_count;
+  if v_count >= 3 then
+    raise notice 'OK: backfill hebdo remplit les périodes vides (% lignes)', v_count;
+  else
+    raise exception 'FAIL: backfill hebdo n''a créé que % lignes', v_count;
+  end if;
+  select private.backfill_objective_periods('week') into v_count;
+  if v_count = 0 then
+    raise notice 'OK: backfill hebdo idempotent (0 ligne au second passage)';
+  else
+    raise exception 'FAIL: backfill hebdo non idempotent (% lignes)', v_count;
+  end if;
+
+  -- =========================================================================
+  -- 12. Objectif quantifié : saisies, période MENSUELLE, progression
+  -- =========================================================================
+  -- Un secondaire quantifié : c'est le seul type, avec les jalons, qu'un
+  -- secondaire peut porter (il n'a pas de demande périodique, donc pas
+  -- d'habitude). Le slot 1 des secondaires est pris par v_secondary.
+  insert into public.objective (user_id, year, kind, label, title,
+                                measure, period_unit, target_value, unit, entry_mode, direction)
+  values (ua, v_year, 'secondaire', 'EPARGNE', 'Épargner 6 000 €',
+          'quantite', 'month', 6000, '€', 'cumul', 'atteindre')
+  returning id into v_quant;
+
+  -- entry_date est posée par le SERVEUR : la valeur du client n'est pas lue.
+  insert into public.objective_entry (objective_id, entry_date, value)
+  values (v_quant, date '2020-01-01', 400) returning id into v_entry;
+  select entry_date into v_date from public.objective_entry where id = v_entry;
+  if v_date = private.today() then
+    raise notice 'OK: entry_date ignorée du client, posée au jour applicatif';
+  else
+    raise exception 'FAIL: entry_date client conservée (%)', v_date;
+  end if;
+
+  begin
+    insert into public.objective_entry (objective_id, value) values (v_obj, 10);
+    raise exception 'FAIL: saisie acceptée sur un objectif non quantifié';
+  exception when raise_exception then
+    if sqlerrm like '%objective_entry_not_quantified%' then
+      raise notice 'OK: pas de saisie sur une habitude';
+    else raise; end if;
+  end;
+
+  begin
+    update public.objective_entry set entry_date = private.today() - 1 where id = v_entry;
+    raise exception 'FAIL: saisie redatée';
+  exception when raise_exception then
+    if sqlerrm like '%objective_entry_identity_immutable%' then
+      raise notice 'OK: une saisie ne se redate pas, seule sa valeur bouge';
+    else raise; end if;
+  end;
+
+  -- La saisie alimente une période MENSUELLE : une saisie attendue, donc 1/1.
+  select done, target into v_days, v_target
+  from public.objective_period
+  where objective_id = v_quant
+    and period_unit  = 'month'
+    and period_year  = private.period_year('month', private.period_start('month', private.today()))
+    and period_index = private.period_index('month', private.period_start('month', private.today()));
+  if v_days = 1 and v_target = 1 then
+    raise notice 'OK: une saisie remplit sa période mensuelle (1/1)';
+  else
+    raise exception 'FAIL: période mensuelle done=%, target=%', v_days, v_target;
+  end if;
+
+  -- Deux saisies le même mois valent toujours 1 : on mesure un rythme de relevé,
+  -- pas un volume — et le cumul, lui, additionne.
+  insert into public.objective_entry (objective_id, value) values (v_quant, 350);
+  select done into v_days from public.objective_period
+  where objective_id = v_quant
+    and period_unit  = 'month'
+    and period_year  = private.period_year('month', private.period_start('month', private.today()))
+    and period_index = private.period_index('month', private.period_start('month', private.today()));
+  select p.value, p.entries into v_value, v_count
+  from public.objective_progress(array[v_quant]) p;
+  if v_days = 1 and v_value = 750 and v_count = 2 then
+    raise notice 'OK: deux saisies = 1 période remplie, cumul 750 € sur 2 saisies';
+  else
+    raise exception 'FAIL: done=%, value=%, entries=%', v_days, v_value, v_count;
+  end if;
+
+  -- En mode relevé, la dernière saisie remplace : elle ne s'additionne pas et
+  -- peut baisser (un solde bancaire baisse).
+  update private.objective set entry_mode = 'releve' where id = v_quant;
+  select p.value into v_value from public.objective_progress(array[v_quant]) p;
+  if v_value = 350 then
+    raise notice 'OK: en mode relevé, la progression est la dernière saisie';
+  else
+    raise exception 'FAIL: progression en mode relevé = %', v_value;
+  end if;
+  update private.objective set entry_mode = 'cumul' where id = v_quant;
+
+  -- Backfill mensuel : les mois révolus depuis la création, à 0 sur 1.
+  update private.objective set created_at = make_date(v_year, 1, 1)
+  where id = v_quant;
+  select private.backfill_objective_periods('month') into v_count;
+  if v_count = extract(month from private.today())::int - 1 then
+    raise notice 'OK: backfill mensuel remplit les % mois révolus', v_count;
+  else
+    raise exception 'FAIL: backfill mensuel a créé % lignes (attendu %)',
+      v_count, extract(month from private.today())::int - 1;
+  end if;
+  select private.backfill_objective_periods('month') into v_count;
+  if v_count = 0 then
+    raise notice 'OK: backfill mensuel idempotent';
+  else
+    raise exception 'FAIL: backfill mensuel non idempotent (% lignes)', v_count;
+  end if;
+
+  -- =========================================================================
+  -- 13. Régularité : plafonnement par période, exclusion de la période en cours,
+  --     fenêtre projetée qui GLISSE (REFONTE §1.3)
+  -- =========================================================================
+  -- Relevé fabriqué de toutes pièces : c'est la seule façon de contrôler cinq
+  -- périodes closes sans faire voyager l'horloge.
+  delete from public.objective_period where objective_id = v_obj;
+  update public.objective set cadence = 3 where id = v_obj;
+
+  -- de la plus récente à la plus ancienne : 3, 5, 3, 0, puis 3 hors fenêtre
+  for v_i in 1..5 loop
+    v_date := private.period_start('week', private.today()) - v_i * 7;
+    insert into public.objective_period
+      (objective_id, period_unit, period_year, period_index, target, done)
+    values (v_obj, 'week',
+            private.period_year('week', v_date), private.period_index('week', v_date),
+            3, (array[3, 5, 3, 0, 3])[v_i]);
+  end loop;
+  -- période en cours : 2 sur 3
+  v_date := private.period_start('week', private.today());
+  insert into public.objective_period
+    (objective_id, period_unit, period_year, period_index, target, done)
+  values (v_obj, 'week',
+          private.period_year('week', v_date), private.period_index('week', v_date), 3, 2);
+
+  select r.done, r.target, r.done_projected, r.target_projected
+  into v_reg_done, v_reg_target, v_reg_pdone, v_reg_ptarget
+  from public.objective_regularity(array[v_obj]) r;
+
+  -- 4 closes : 3 + min(5,3) + 3 + 0 = 9 sur 12. La 5e (3/3) est hors fenêtre,
+  -- et la période en cours (2/3) n'est pas close.
+  if v_reg_done = 9 and v_reg_target = 12 then
+    raise notice 'OK: régularité 9/12 — période plafonnée, 5e période et période en cours exclues';
+  else
+    raise exception 'FAIL: régularité %/%', v_reg_done, v_reg_target;
+  end if;
+
+  -- projeté : la fenêtre GLISSE — les 3 dernières closes (9/9) plus la période
+  -- en cours (2/3), donc 11/12. La plus ancienne sort, celle en cours entre.
+  if v_reg_pdone = 11 and v_reg_ptarget = 12 then
+    raise notice 'OK: régularité projetée 11/12 — la fenêtre glisse, elle ne s''allonge pas';
+  else
+    raise exception 'FAIL: régularité projetée %/%', v_reg_pdone, v_reg_ptarget;
+  end if;
+
+  -- sans ligne pour la période en cours, sa cible est synthétisée depuis la
+  -- cadence : sinon la projection ignorerait la période qui entre.
+  delete from public.objective_period
+  where objective_id = v_obj
+    and period_unit  = 'week'
+    and period_year  = private.period_year('week', private.period_start('week', private.today()))
+    and period_index = private.period_index('week', private.period_start('week', private.today()));
+  select r.done_projected, r.target_projected into v_reg_pdone, v_reg_ptarget
+  from public.objective_regularity(array[v_obj]) r;
+  if v_reg_pdone = 9 and v_reg_ptarget = 12 then
+    raise notice 'OK: période en cours absente du relevé → cible synthétisée (9/12)';
+  else
+    raise exception 'FAIL: projection sans ligne courante %/%', v_reg_pdone, v_reg_ptarget;
+  end if;
+
+  -- un objectif jalonné n'a pas de régularité : pas de ligne du tout
+  select count(*) into v_count from public.objective_regularity(array[v_secondary]);
+  if v_count = 0 then
+    raise notice 'OK: les jalons n''ont pas de régularité (aucune ligne rendue)';
+  else
+    raise exception 'FAIL: % ligne(s) de régularité pour un objectif jalonné', v_count;
+  end if;
+
+  -- =========================================================================
+  -- 14. objective_session : la séance sans tâche (REFONTE §7, écran 2)
+  -- =========================================================================
+  -- Terrain remis à plat : v_obj est une habitude ANNUELLE (quarter null), sa
+  -- fenêtre couvre donc toute l'année en cours.
+  delete from public.task where objective_id = v_obj;
+  delete from public.objective_period where objective_id = v_obj;
+  update public.objective set cadence = 3 where id = v_obj;
+
+  v_date := private.today();
+
+  -- `day` est la seule date que le client choisisse : c'est le trigger qui la borne.
+  begin
+    insert into public.objective_session (objective_id, day) values (v_obj, v_date + 1);
+    raise exception 'FAIL: séance dans le futur acceptée';
+  exception when raise_exception then
+    if sqlerrm like '%objective_session_future%' then
+      raise notice 'OK: une séance qui n''a pas eu lieu est refusée';
+    else raise; end if;
+  end;
+
+  begin
+    insert into public.objective_session (objective_id, day)
+    values (v_obj, make_date(v_year - 1, 12, 31));
+    raise exception 'FAIL: séance hors fenêtre acceptée';
+  exception when raise_exception then
+    if sqlerrm like '%objective_session_out_of_window%' then
+      raise notice 'OK: séance hors de la fenêtre de l''objectif refusée';
+    else raise; end if;
+  end;
+
+  -- Seule une habitude compte des jours : une quantité se relève, des jalons se
+  -- franchissent.
+  begin
+    insert into public.objective_session (objective_id, day) values (v_secondary, v_date);
+    raise exception 'FAIL: séance sur un objectif jalonné acceptée';
+  exception when raise_exception then
+    if sqlerrm like '%objective_session_not_habit%' then
+      raise notice 'OK: pas de séance sur des jalons';
+    else raise; end if;
+  end;
+
+  begin
+    insert into public.objective_session (objective_id, day) values (v_quant, v_date);
+    raise exception 'FAIL: séance sur un objectif quantifié acceptée';
+  exception when raise_exception then
+    if sqlerrm like '%objective_session_not_habit%' then
+      raise notice 'OK: pas de séance sur une quantité';
+    else raise; end if;
+  end;
+
+  -- Une séance seule crédite son jour, sans qu'aucune tâche n'existe.
+  insert into public.objective_session (objective_id, day)
+  values (v_obj, v_date) returning id into v_session;
+
+  select done, target into v_days, v_target from public.objective_period
+  where objective_id = v_obj
+    and period_unit  = 'week'
+    and period_year  = private.period_year('week', private.period_start('week', v_date))
+    and period_index = private.period_index('week', private.period_start('week', v_date));
+  if v_days = 1 and v_target = 3 then
+    raise notice 'OK: une séance sans tâche crédite son jour (1/3)';
+  else
+    raise exception 'FAIL: séance seule done=%, target=%', v_days, v_target;
+  end if;
+
+  begin
+    insert into public.objective_session (objective_id, day) values (v_obj, v_date);
+    raise exception 'FAIL: deux séances le même jour acceptées';
+  exception when unique_violation then
+    raise notice 'OK: toucher deux fois la même case ne crédite pas deux fois';
+  end;
+
+  -- LE cas qui justifie le `union` : une tâche cochée le MÊME jour ne fait pas
+  -- monter le compteur. `done` est un nombre de jours, pas un nombre d'actions.
+  insert into public.task (user_id, title, objective_id, due_date)
+  values (ua, 'même jour qu''une séance', v_obj, v_date) returning id into v_task;
+  update public.task set completed_at = now() where id = v_task;
+
+  select done into v_days from public.objective_period
+  where objective_id = v_obj
+    and period_unit  = 'week'
+    and period_year  = private.period_year('week', private.period_start('week', v_date))
+    and period_index = private.period_index('week', private.period_start('week', v_date));
+  if v_days = 1 then
+    raise notice 'OK: séance + tâche le même jour = 1 jour actif';
+  else
+    raise exception 'FAIL: séance + tâche le même jour done=%', v_days;
+  end if;
+
+  -- Et la grille de densité raconte la même chose que le relevé.
+  select count(*) into v_count
+  from public.objective_active_days(array[v_obj], v_date, v_date);
+  if v_count = 1 then
+    raise notice 'OK: objective_active_days ne rend le jour qu''une fois';
+  else
+    raise exception 'FAIL: objective_active_days rend % ligne(s)', v_count;
+  end if;
+
+  -- Retirer la séance ne retire pas le jour : la tâche le tient encore. C'est ce
+  -- qui distingue une union d'un compteur.
+  delete from public.objective_session where id = v_session;
+  select done into v_days from public.objective_period
+  where objective_id = v_obj
+    and period_unit  = 'week'
+    and period_year  = private.period_year('week', private.period_start('week', v_date))
+    and period_index = private.period_index('week', private.period_start('week', v_date));
+  if v_days = 1 then
+    raise notice 'OK: séance retirée, la tâche tient toujours le jour';
+  else
+    raise exception 'FAIL: après retrait de la séance done=%', v_days;
+  end if;
+
+  delete from public.task where id = v_task;
+  select done into v_days from public.objective_period
+  where objective_id = v_obj
+    and period_unit  = 'week'
+    and period_year  = private.period_year('week', private.period_start('week', v_date))
+    and period_index = private.period_index('week', private.period_start('week', v_date));
+  if v_days = 0 then
+    raise notice 'OK: plus rien ne tient le jour → done retombe à 0';
+  else
+    raise exception 'FAIL: après retrait des deux done=%', v_days;
+  end if;
+
+  -- Un objectif arrêté n'attend plus rien : on ne répare pas son passé.
+  update public.objective set closed_at = now() where id = v_obj;
+  begin
+    insert into public.objective_session (objective_id, day) values (v_obj, v_date);
+    raise exception 'FAIL: séance sur un objectif clôturé acceptée';
+  exception when raise_exception then
+    if sqlerrm like '%objective_session_closed%' then
+      raise notice 'OK: pas de séance sur un objectif arrêté';
+    else raise; end if;
+  end;
+  update public.objective set closed_at = null where id = v_obj;
+
+  -- =========================================================================
+  -- 15. touch_last_seen : apprendre l'écart et enregistrer la visite (REFONTE §9)
+  -- =========================================================================
+  -- A n'a encore jamais été vu : la colonne est nulle, et une donnée absente
+  -- n'est PAS une absence — c'est ce qui évite que tous les comptes existants
+  -- voient l'écran de retour le jour du déploiement.
+  select public.touch_last_seen() into v_seen;
+  if v_seen is null then
+    raise notice 'OK: la première visite ne rend aucun écart';
+  else
+    raise exception 'FAIL: première visite = %', v_seen;
+  end if;
+
+  select last_seen_on into v_seen from public.profile where id = ua;
+  if v_seen = private.today() then
+    raise notice 'OK: la visite est estampillée au jour applicatif';
+  else
+    raise exception 'FAIL: last_seen_on = %', v_seen;
+  end if;
+
+  -- Rouvrir le même jour rend la date du jour, donc un écart nul : la cérémonie
+  -- ne se rejoue pas d'un onglet à l'autre.
+  select public.touch_last_seen() into v_seen;
+  if v_seen = private.today() then
+    raise notice 'OK: rouvrir le même jour ne fabrique pas une absence';
+  else
+    raise exception 'FAIL: second appel = %', v_seen;
+  end if;
+
+  -- La colonne n'a pas de `grant update` : le client ne peut pas forger sa date
+  -- de dernière visite, même doctrine que completed_at et closed_at.
+  --
+  -- Le reste du fichier tourne en superuser, qui contourne les grants : c'est la
+  -- seule assertion qui doit vraiment endosser le rôle `authenticated` pour avoir
+  -- un sens. `set_config('role', …, true)` est local à la transaction.
+  perform set_config('role', 'authenticated', true);
+  begin
+    update public.profile set last_seen_on = private.today() - 30 where id = ua;
+    perform set_config('role', 'postgres', true);
+    raise exception 'FAIL: last_seen_on écrite en direct';
+  exception when insufficient_privilege then
+    perform set_config('role', 'postgres', true);
+    raise notice 'OK: last_seen_on ne s''écrit que par la RPC';
+  end;
+
+  -- La RPC agit sur l'appelant, jamais sur un autre profil : B n'a jamais ouvert
+  -- l'app, sa ligne doit être restée intacte après les appels de A.
+  select last_seen_on into v_seen from public.profile where id = ub;
+  if v_seen is null then
+    raise notice 'OK: touch_last_seen ne touche que la ligne de l''appelant';
+  else
+    raise exception 'FAIL: la visite de A a estampillé B (%)', v_seen;
   end if;
 end $$;
 

@@ -11,8 +11,21 @@ import {
 type RocketRatingProps = {
   value: number | null
   onChange: (rating: Rating) => void
-  disabled?: boolean
+  /** Ce que l'on note, pour un lecteur d'écran — la période change d'un écran à l'autre. */
+  label: string
+  /**
+   * `full` : la fusée, son libellé et son indice — un objectif a droit à son
+   * écran. `compact` : la fusée seule, en petit — un secondaire a droit à une
+   * ligne. La différence de traitement **est** la définition du secondaire
+   * (REFONTE §8), elle ne se rattrape pas.
+   */
+  size?: 'full' | 'compact'
 }
+
+const GEOMETRY = {
+  full: { on: 46, off: 38 },
+  compact: { on: 28, off: 24 },
+} as const
 
 /**
  * L'échelle à trois fusées — le geste central du produit.
@@ -21,17 +34,28 @@ type RocketRatingProps = {
  * celle qui est choisie (taille, couleur, halo), pas sa présence. L'utilisateur
  * voit donc en permanence l'échelle sur laquelle il se situe.
  */
-export function RocketRating({ value, onChange, disabled = false }: RocketRatingProps) {
+export function RocketRating({
+  value,
+  onChange,
+  label,
+  size = 'full',
+}: RocketRatingProps) {
+  const compact = size === 'compact'
+  const geometry = GEOMETRY[size]
+
   return (
     <div
       role="radiogroup"
-      aria-label="Note de la semaine"
-      className="my-5 flex justify-center gap-4.5 lg:my-6 lg:gap-9"
+      aria-label={label}
+      className={cn(
+        'flex justify-center',
+        compact ? 'gap-1.5' : 'my-5 gap-4.5 lg:my-6 lg:gap-9',
+      )}
     >
       {RATINGS.map((rating) => {
         const on = value === rating
         const color = RATING_COLORS[rating]!
-        const { label, hint } = RATING_LABELS[rating]
+        const { label: name, hint } = RATING_LABELS[rating]
 
         return (
           <button
@@ -39,13 +63,13 @@ export function RocketRating({ value, onChange, disabled = false }: RocketRating
             type="button"
             role="radio"
             aria-checked={on}
-            aria-label={`${label} — ${hint}`}
-            disabled={disabled}
+            aria-label={`${name} — ${hint}`}
             onClick={() => onChange(rating)}
             className={cn(
-              'flex flex-col items-center gap-1.5 rounded-lg px-1.5 py-1 transition-opacity duration-200',
+              'flex flex-col items-center rounded-lg transition-opacity duration-200',
               'focus-visible:ring-3 focus-visible:ring-white/30 focus-visible:outline-none',
-              disabled ? 'cursor-default' : 'cursor-pointer hover:opacity-100',
+              compact ? 'px-3.5 py-1' : 'gap-1.5 px-1.5 py-1',
+              'cursor-pointer hover:opacity-100',
               on ? 'opacity-100' : 'opacity-32',
             )}
           >
@@ -53,20 +77,26 @@ export function RocketRating({ value, onChange, disabled = false }: RocketRating
               withPort
               className="transition-all duration-250"
               style={{
-                width: on ? 46 : 38,
-                height: on ? 46 : 38,
+                width: on ? geometry.on : geometry.off,
+                height: on ? geometry.on : geometry.off,
                 color: on ? color : '#9aa0b5',
                 transform: RATING_TILT[rating],
                 filter: on ? `drop-shadow(0 0 14px ${color}aa)` : undefined,
               }}
             />
-            <span
-              className={cn(on ? 'text-[12px] font-semibold' : 'text-[11px]')}
-              style={{ color: on ? color : '#9aa0b5' }}
-            >
-              {label}
-            </span>
-            <span className="text-micro text-[#565866]">{hint}</span>
+            {/* Le libellé disparaît en compact, jamais le nom accessible : la
+                fusée seule ne dit rien à un lecteur d'écran. */}
+            {!compact && (
+              <>
+                <span
+                  className={cn(on ? 'text-[12px] font-semibold' : 'text-[11px]')}
+                  style={{ color: on ? color : '#9aa0b5' }}
+                >
+                  {name}
+                </span>
+                <span className="text-micro text-ink-onnight-faint">{hint}</span>
+              </>
+            )}
           </button>
         )
       })}

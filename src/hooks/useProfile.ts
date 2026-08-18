@@ -20,6 +20,12 @@ export function useProfile() {
         .eq('id', userId!)
         .single()
       if (error) throw error
+      // Confort de dev : rejoue l'onboarding à chaque chargement sans recréer un
+      // compte. `import.meta.env.DEV` fige la condition à false au build — le
+      // drapeau ne peut pas s'activer en prod, même défini sur Vercel.
+      if (import.meta.env.DEV && import.meta.env.VITE_FORCE_ONBOARDING === '1') {
+        return { ...data, onboarded_at: null }
+      }
       return data
     },
   })

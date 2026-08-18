@@ -5,7 +5,8 @@ import type { DonePhase } from '../../../components/tasks/taskDone'
 import type { List } from '../../../hooks/useLists'
 import type { Task } from '../../../hooks/useTasks'
 import { cn } from '../../../lib/cn'
-import { objectiveSkin } from '../../../lib/objectivePalette'
+import type { TaskAge } from '../../../lib/taskAge'
+import { taskRowSkin } from '../../../components/tasks/taskRowSkin'
 
 type TaskRowCompactProps = {
   task: Task
@@ -16,6 +17,8 @@ type TaskRowCompactProps = {
   /** « En retard · Hier » — posé par la section du même nom, absent ailleurs. Le
    *  délai est calculé par l'appelant, qui seul connaît l'ancre serveur. */
   overdueLabel?: string
+  /** Ancienneté, en vue « Sans date » seulement (REFONTE §5). */
+  age?: TaskAge
   onToggle: (task: Task) => void
   /** Toucher la ligne ouvre la feuille d'édition (maquette mobile). */
   onOpen: (task: Task) => void
@@ -24,6 +27,12 @@ type TaskRowCompactProps = {
 /**
  * Ligne mobile : plus dense, sans affordance de survol — le doigt n'en a pas.
  * Les métadonnées passent sur une seconde ligne sous le titre.
+ *
+ * **Pas de filet entre les lignes**, comme en desktop : la hauteur de ligne et
+ * la case à cocher suffisent à les séparer, et un trait sous chacune redonnait à
+ * la liste mobile l'air de tableau que le reste du produit n'a pas. Les seuls
+ * traits qui restent sont ceux qui séparent des SECTIONS (le retard du reste de
+ * la liste), et ceux-là portent du sens.
  */
 export function TaskRowCompact({
   task,
@@ -32,34 +41,35 @@ export function TaskRowCompact({
   donePhase,
   reducedMotion = false,
   overdueLabel,
+  age,
   onToggle,
   onOpen,
 }: TaskRowCompactProps) {
   const done = task.completed_at !== null
-  const accent = objectiveSlot != null ? objectiveSkin(objectiveSlot).core : null
-  const linked = accent !== null && !done
-  const bursting = donePhase !== undefined && !reducedMotion
+  const { accent, linked, bursting, doneClasses, style } = taskRowSkin({
+    objectiveSlot,
+    done,
+    donePhase,
+    reducedMotion,
+  })
 
   const hasMeta =
-    !!overdueLabel || !!list || task.recurrence != null || task.is_important || !!task.space_id
+    !!overdueLabel ||
+    !!age ||
+    !!list ||
+    task.recurrence != null ||
+    task.is_important ||
+    !!task.space_id
 
   return (
     <li
       data-task-row={task.id}
       className={cn(
-        'flex min-h-11 items-center gap-2.5 border-b border-surface-subtle py-2.5 pr-2',
+        'flex min-h-11 items-center gap-2.5 py-2.5 pr-2',
         linked ? 'border-l-[3px] pl-3' : 'pl-3.5',
-        !reducedMotion && donePhase === 1 && 'animate-row-flash',
-        !reducedMotion && donePhase === 2 && 'animate-row-collapse overflow-hidden',
+        doneClasses,
       )}
-      style={
-        linked && accent
-          ? {
-              borderLeftColor: accent,
-              backgroundImage: `linear-gradient(90deg,${accent}0d,transparent 60%)`,
-            }
-          : undefined
-      }
+      style={style}
     >
       <TaskCheckbox
         done={done}
@@ -94,6 +104,12 @@ export function TaskRowCompact({
               </span>
             )}
             {list && <ListPill name={list.name} color={list.color} size="sm" />}
+            {age && (
+              <span title={age.long} className="shrink-0 text-[11px] text-ink-muted">
+                <span aria-hidden>{age.short}</span>
+                <span className="sr-only">{age.long}</span>
+              </span>
+            )}
             {task.recurrence != null && (
               <span className="text-[14px] text-ink-muted" aria-hidden>
                 ↻

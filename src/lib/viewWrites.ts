@@ -10,6 +10,19 @@ import type { Database } from '../types/database'
 // et on en profite pour rendre la règle projet vérifiable à la compilation :
 // les colonnes imposées par les triggers ne sont même pas proposées.
 
+/**
+ * L'estampille « allumée » d'une colonne serveur : `completed_at`, `closed_at`,
+ * `validated_at`.
+ *
+ * PostgREST exige un timestamptz valide, mais le trigger l'écrase par `now()` :
+ * la valeur envoyée n'est lue que comme un **signal booléen** (null / non-null).
+ * D'où une constante figée plutôt que `new Date()` — l'horloge du navigateur n'a
+ * pas voix au chapitre, et aucune lecture du code ne doit laisser croire le
+ * contraire. Quatre hooks la redéfinissaient sous trois noms, chacun avec sa
+ * propre copie de cette explication.
+ */
+export const TIMESTAMP_SIGNAL = '1970-01-01T00:00:00.000Z'
+
 type Views = Database['public']['Views']
 
 export type WritableView = 'task' | 'list' | 'objective' | 'milestone' | 'space' | 'review_item'
@@ -46,8 +59,12 @@ export function updateView<V extends WritableView>(view: V, patch: ViewPatch<V>)
  * obligatoires — et les colonnes serveur restent exclues comme en update, ce
  * qui interdit notamment d'envoyer `slot` (le serveur attribue le plus petit
  * libre ; le fournir contournerait l'attribution et risquerait un doublon).
+ *
+ * Un tableau est accepté : les quatre jalons posés d'un coup à la création d'un
+ * objectif partent en une écriture plutôt qu'en quatre allers-retours, et le
+ * trigger INSTEAD OF les traite ligne à ligne comme d'habitude.
  */
-export function insertView<V extends WritableView>(view: V, row: ViewPatch<V>) {
+export function insertView<V extends WritableView>(view: V, row: ViewPatch<V> | ViewPatch<V>[]) {
   return supabase.from(view).insert(row as never)
 }
 

@@ -17,7 +17,7 @@ import { parseTaskParams } from './taskViewParams'
  * Propriétaire de la modale « Nouvelle tâche », monté une seule fois dans
  * `AppShell` — donc disponible sur les quatre écrans authentifiés.
  *
- * Elle vivait dans `TasksView`, ce qui obligeait le raccourci à naviguer vers
+ * Elle vivait dans l'écran Tâches, ce qui obligeait le raccourci à naviguer vers
  * `/taches` pour l'ouvrir. Ici, `N` se contente d'ajouter `?nouvelle=1` à la route
  * COURANTE : la modale s'ouvre par-dessus l'écran où l'on est, et le referme y
  * laisse. C'est de la capture rapide — on ne perd jamais son contexte.
@@ -74,7 +74,10 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
       lists={listsQuery.data ?? []}
       today={today}
       // Hors de l'écran Tâches il n'y a pas de `?liste=` : la tâche naît sans liste.
-      defaultListId={scope === 'list' ? listId : null}
+      defaultListId={listId}
+      // Depuis le pool, la tâche naît sans échéance — sinon elle disparaîtrait
+      // de la vue où on vient de l'écrire.
+      defaultDueDate={scope === 'undated' ? null : today}
       nextPosition={nextTaskPosition(queryClient)}
     />
   )

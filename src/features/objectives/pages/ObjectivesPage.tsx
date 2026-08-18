@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Spinner } from '../../../components/ui/Spinner'
+import { useMemo, useState } from 'react'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { useAppToday } from '../../../hooks/useAppToday'
 import { useMilestones, groupByObjective } from '../../../hooks/useMilestones'
 import { useObjectiveActiveDays } from '../../../hooks/useObjectiveActiveDays'
-import { NO_RATINGS, useQuarterRatings } from '../../../hooks/useQuarterRatings'
-import { indexWeeks, useObjectiveWeeks } from '../../../hooks/useObjectiveWeeks'
+import { useObjectiveEntries } from '../../../hooks/useObjectiveEntries'
+import { useObjectivePeriods } from '../../../hooks/useObjectivePeriods'
+import { useObjectiveProgress } from '../../../hooks/useObjectiveProgress'
+import { useObjectiveRegularity } from '../../../hooks/useObjectiveRegularity'
+import { openingKey, useReviewOpenings } from '../../../hooks/useReviewOpenings'
 import {
-  MAX_PRINCIPALS,
   selectPrincipals,
   selectSecondaries,
   useObjectives,
@@ -15,285 +16,218 @@ import {
 } from '../../../hooks/useObjectives'
 import { useAuth } from '../../auth/useAuth'
 import { dataErrorMessage } from '../../../lib/errorMessage'
-import {
-  addDays,
-  daysOfWeek as weekDaysOf,
-  isoWeek,
-  quarterAnchor,
-  quarterOf,
-  weeksOfQuarter,
-  weeksOfQuarterRefs,
-  year as yearOf,
-  type IsoDate,
-} from '../../../lib/appDate'
-import { cn } from '../../../lib/cn'
+import { year as yearOf, type IsoDate } from '../../../lib/appDate'
+import { periodYearFor } from '../../../lib/objectivePeriod'
+import { heatmapRange, heatmapWindow } from '../../../lib/objectiveWindow'
+import { isWithinWindow } from '../../../lib/objectiveFeasibility'
 import { ObjectiveDetail } from '../components/ObjectiveDetail'
-import { ObjectiveFormModal } from '../components/ObjectiveFormModal'
-import { ObjectivePicker } from '../components/ObjectivePicker'
-import { YearProgressBar } from '../components/YearProgressBar'
+import { ObjectiveEditModal } from '../components/ObjectiveEditModal'
+import { ObjectiveWizardModal } from '../../../components/objectives/ObjectiveWizardModal'
+import { ObjectiveRail } from '../components/ObjectiveRail'
+import { EmptyObjectives } from '../components/EmptyObjectives'
 import type { ObjectiveKind } from '../../../hooks/useObjectiveMutations'
+import { usePrivacy } from '../../../hooks/usePrivacy'
+import { useQueriesState } from '../../../hooks/useQueriesState'
+import { PageLoading, PageError } from '../../../components/layout/PageState'
 
 export function ObjectivesPage() {
   const { session } = useAuth()
   const userId = session?.user.id
 
+  const { privacy } = usePrivacy()
+
   const todayQuery = useAppToday()
   const today = todayQuery.data
-
   const year = today ? yearOf(today) : undefined
-  const currentQuarter = today ? quarterOf(today) : undefined
-  const currentWeek = today ? isoWeek(today) : undefined
 
-  const [selectedQuarter, setSelectedQuarter] = useState<number | undefined>()
   const [selectedId, setSelectedId] = useState<string | undefined>()
-  const [formKind, setFormKind] = useState<ObjectiveKind>('principal')
+  // `editing` n'est PAS remis à `undefined` à la fermeture : `Modal` garde son
+  // panneau monté 360 ms le temps de la sortie animée, et l'objectif
+  // disparaîtrait en pleine descente. D'où un booléen à côté, plutôt qu'un
+  // `open={!!editing}`.
   const [editing, setEditing] = useState<Objective | undefined>()
-  const [formOpen, setFormOpen] = useState(false)
-
-  // Le trimestre affiché suit celui du serveur tant que l'utilisateur n'a pas
-  // choisi : l'ancre est `app_today()`, jamais l'horloge du navigateur.
-  useEffect(() => {
-    if (selectedQuarter === undefined && currentQuarter) setSelectedQuarter(currentQuarter)
-  }, [currentQuarter, selectedQuarter])
+  const [editOpen, setEditOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
 
   const objectivesQuery = useObjectives(year)
-  const principals = useMemo(
-    () => selectPrincipals(objectivesQuery.data),
-    [objectivesQuery.data],
-  )
-  const secondaries = useMemo(
-    () => selectSecondaries(objectivesQuery.data),
-    [objectivesQuery.data],
-  )
-  const allObjectives = useMemo(
-    () => [...principals, ...secondaries],
-    [principals, secondaries],
-  )
-  const objectiveIds = useMemo(() => allObjectives.map((o) => o.id), [allObjectives])
 
-  // La sélection retombe sur le premier objectif tant qu'elle est vide ou que
-  // la cible a disparu (suppression, changement d'année).
-  const selected =
-    allObjectives.find((o) => o.id === selectedId) ?? allObjectives[0] ?? undefined
+  // Trois rangs, et un objectif arrêté quitte le sien : il n'est plus « porté ».
+  // Il garde en revanche son emplacement jusqu'à la fin de sa fenêtre, ce que
+  // comptent `principalSlotsUsed` / `secondarySlotsUsed` plus bas.
+  const { principals, secondaries, stopped, all } = useMemo(() => {
+    const open = (o: Objective) => o.closed_at === null
+    const principalsAll = selectPrincipals(objectivesQuery.data)
+    const secondariesAll = selectSecondaries(objectivesQuery.data)
+    return {
+      principals: principalsAll.filter(open),
+      secondaries: secondariesAll.filter(open),
+      stopped: [...principalsAll, ...secondariesAll].filter((o) => !open(o)),
+      all: [...principalsAll, ...secondariesAll],
+    }
+  }, [objectivesQuery.data])
 
-  // Chaque trimestre a sa propre grille : les colonnes suivent le rail Q1–Q4,
-  // pas une fenêtre glissante depuis aujourd'hui.
-  const quarterStart = useMemo(
-    () => (year && selectedQuarter ? quarterAnchor(year, selectedQuarter) : undefined),
-    [year, selectedQuarter],
+  const objectiveIds = useMemo(() => all.map((o) => o.id), [all])
+
+  const selected = all.find((o) => o.id === selectedId) ?? all[0] ?? undefined
+
+  // Les relevés se lisent par unité, et les deux n'ont pas la même année :
+  // `period_year` vaut l'année **ISO** en hebdomadaire, l'année **civile** en
+  // mensuel (private.period_year). Les confondre ferait manquer les périodes de
+  // fin décembre sans lever la moindre erreur.
+  const weekIds = useMemo(
+    () => all.filter((o) => o.period_unit === 'week').map((o) => o.id),
+    [all],
+  )
+  const monthIds = useMemo(
+    () => all.filter((o) => o.period_unit === 'month').map((o) => o.id),
+    [all],
   )
 
-  const heatmapWeeks = useMemo(
-    () => (quarterStart ? weeksOfQuarter(quarterStart) : []),
-    [quarterStart],
+  const weekPeriodsQuery = useObjectivePeriods(
+    weekIds,
+    'week',
+    today ? periodYearFor('week', today) : undefined,
+  )
+  const monthPeriodsQuery = useObjectivePeriods(
+    monthIds,
+    'month',
+    today ? periodYearFor('month', today) : undefined,
   )
 
-  // La plage de jours crédités doit couvrir les COLONNES affichées, qui
-  // débordent du trimestre civil (la première commence au lundi de la semaine
-  // du 1er). Sans ça, les cases hors plage resteraient vides.
-  const heatmapRange = useMemo(() => {
-    if (heatmapWeeks.length === 0) return undefined
-    return { from: heatmapWeeks[0]!, to: addDays(heatmapWeeks[heatmapWeeks.length - 1]!, 6) }
-  }, [heatmapWeeks])
+  const regularityQuery = useObjectiveRegularity(objectiveIds)
+  const progressQuery = useObjectiveProgress(objectiveIds)
 
-  const weeksQuery = useObjectiveWeeks(objectiveIds, currentWeek?.isoYear)
+  // La grille se borne à la fenêtre de l'objectif AFFICHÉ : le trimestre n'est
+  // plus choisi ici, il se déduit (REFONTE §4 — l'année se consulte au §6).
+  const window = useMemo(
+    () => (selected && today ? heatmapWindow(selected, today) : undefined),
+    [selected, today],
+  )
+  const range = useMemo(() => (window ? heatmapRange(window.weeks) : undefined), [window])
+
   const activeDaysQuery = useObjectiveActiveDays(
-    objectiveIds,
-    heatmapRange?.from,
-    heatmapRange?.to,
+    selected ? [selected.id] : [],
+    range?.from,
+    range?.to,
   )
-  const milestonesQuery = useMilestones(objectiveIds, year, selectedQuarter)
+  const milestonesQuery = useMilestones(objectiveIds, year, window?.quarter)
+  const openingsQuery = useReviewOpenings(year ? [year] : [])
 
-  const quarterWeekRefs = useMemo(
-    () => (quarterStart ? weeksOfQuarterRefs(quarterStart) : []),
-    [quarterStart],
+  // Saisies du seul objectif affiché : la projection d'une quantité s'y lit, et
+  // sa key ne porte qu'un identifiant — rien à gagner à la grouper.
+  const entriesQuery = useObjectiveEntries(
+    selected?.measure === 'quantite' ? selected.id : undefined,
   )
 
-  // Un seul objectif ici — la sparkline ne montre que celui qui est affiché.
-  const ratingObjectiveIds = useMemo(() => (selected ? [selected.id] : []), [selected])
-  const ratingsQuery = useQuarterRatings(ratingObjectiveIds, quarterWeekRefs, selectedQuarter)
-
-  const weekIndex = useMemo(() => indexWeeks(weeksQuery.data), [weeksQuery.data])
   const milestonesByObjective = useMemo(
     () => groupByObjective(milestonesQuery.data),
     [milestonesQuery.data],
   )
 
-  // Relevés du seul objectif affiché, dans l'ordre des colonnes : la tendance
-  // se lit sur cette série, jamais sur un recalcul depuis les tâches.
-  const selectedWeeks = useMemo(() => {
+  const selectedPeriods = useMemo(() => {
     if (!selected) return []
-    return heatmapWeeks
-      .map((monday) => weekIndex.get(`${selected.id}|${isoWeek(monday).isoWeek}`))
-      .filter((w) => w !== undefined)
-  }, [selected, heatmapWeeks, weekIndex])
+    const rows =
+      selected.period_unit === 'month' ? monthPeriodsQuery.data : weekPeriodsQuery.data
+    return (rows ?? []).filter((p) => p.objective_id === selected.id)
+  }, [selected, weekPeriodsQuery.data, monthPeriodsQuery.data])
 
-  const monthLabels = useMemo(() => monthsOf(heatmapWeeks), [heatmapWeeks])
+  const queries = [
+    todayQuery,
+    objectivesQuery,
+    weekPeriodsQuery,
+    monthPeriodsQuery,
+    regularityQuery,
+    progressQuery,
+    activeDaysQuery,
+    milestonesQuery,
+  ]
+  const { firstError, retrying, onRetry } = useQueriesState(queries)
 
-  const queries = [todayQuery, objectivesQuery, weeksQuery, activeDaysQuery, milestonesQuery, ratingsQuery]
-  const failed = queries.filter((q) => q.error !== null)
-  const firstError = failed[0]?.error ?? null
-  const retrying = failed.some((q) => q.isFetching)
 
-  function handleRetry() {
-    for (const query of failed) void query.refetch()
-  }
-
-  function openCreate(kind: ObjectiveKind) {
-    setFormKind(kind)
-    setEditing(undefined)
-    setFormOpen(true)
-  }
-
-  function openEdit(objective: Objective) {
-    setEditing(objective)
-    setFormOpen(true)
+  // La nature de l'objectif n'est plus déduite du nombre de places libres :
+  // c'est la première question de l'assistant. La déduire rendait « habitude »
+  // invisible dès que les trois places étaient prises, et interdisait un
+  // secondaire dès qu'il en restait une.
+  function openCreate() {
+    setCreateOpen(true)
   }
 
   if (todayQuery.isPending) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Spinner className="text-ink-muted" />
-      </div>
+      <PageLoading />
     )
   }
 
   if (todayQuery.isError) {
     return (
-      <div className="flex h-full items-center justify-center px-5">
-        <ErrorState
-          title="Impossible de charger vos objectifs"
-          description={dataErrorMessage(todayQuery.error)}
-          onRetry={handleRetry}
-          retrying={retrying}
-          className="max-w-md"
-        />
-      </div>
+      <PageError
+        title="Impossible de charger vos objectifs"
+        error={todayQuery.error}
+        onRetry={onRetry}
+        retrying={retrying}
+      />
     )
   }
 
-  // Archivage dérivé : une année révolue est en lecture seule totale (SPEC §3).
-  const readOnly = false
-  const principalsFull = principals.length >= MAX_PRINCIPALS
-  const empty = allObjectives.length === 0
+  const empty = all.length === 0
+  const rail = {
+    principals,
+    secondaries,
+    stopped,
+    principalSlotsUsed: principalSlotsUsed(all, today),
+    secondarySlotsUsed: secondarySlotsUsed(all, today),
+    selectedId: selected?.id,
+    onSelect: setSelectedId,
+    onCreate: openCreate,
+    privacy,
+  }
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-5.5">
-      <div className="flex items-center gap-3 sm:gap-4">
-        <h1 className="text-[22px] font-medium sm:text-[20px] sm:font-semibold">
-          Objectifs {year}
-        </h1>
-
-        {!empty && (
-          <button
-            type="button"
-            onClick={() => openCreate('principal')}
-            disabled={principalsFull}
-            title={principalsFull ? 'Maximum 3 objectifs principaux' : undefined}
-            className={cn(
-              'ml-auto rounded-md px-4 py-2.5 text-body font-medium transition-all duration-150',
-              'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
-              principalsFull
-                ? 'cursor-not-allowed bg-field text-ink-muted'
-                : 'cursor-pointer bg-primary text-white shadow-primary hover:-translate-y-px hover:bg-primary-hover hover:shadow-primary-hover active:translate-y-px active:bg-primary-active',
-            )}
-          >
-            <span className="hidden sm:inline">+ Nouvel objectif</span>
-            <span className="sm:hidden">+</span>
-            {principalsFull && ` · ${principals.length}/${MAX_PRINCIPALS}`}
-          </button>
-        )}
-      </div>
+    <div className="flex flex-col gap-4 sm:gap-5">
+      <h1 className="text-[22px] font-medium sm:text-h1 sm:font-semibold">Objectifs {year}</h1>
 
       {firstError && (
         <ErrorState
           description={dataErrorMessage(firstError)}
-          onRetry={handleRetry}
+          onRetry={onRetry}
           retrying={retrying}
         />
       )}
 
       {empty ? (
-        <EmptyObjectives onCreate={() => openCreate('principal')} />
+        <EmptyObjectives onCreate={openCreate} />
       ) : (
         <>
-          <YearProgressBar
-            today={today!}
-            year={year!}
-            currentQuarter={currentQuarter!}
-            selectedQuarter={selectedQuarter ?? currentQuarter!}
-            onSelectQuarter={setSelectedQuarter}
-          />
+          <ObjectiveRail {...rail} variant="select" className="lg:hidden" />
 
-          {/* mobile : un select remplace le rail */}
-          <div className="flex gap-2 lg:hidden">
-            <label className="sr-only" htmlFor="objective-select">
-              Objectif affiché
-            </label>
-            <select
-              id="objective-select"
-              value={selected?.id ?? ''}
-              onChange={(e) => setSelectedId(e.target.value)}
-              className="min-w-0 flex-1 rounded-md border-[1.5px] border-border bg-surface px-3.5 py-2.5 text-body text-ink outline-none focus:border-primary"
-            >
-              {principals.length > 0 && (
-                <optgroup label="Principaux">
-                  {principals.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.title}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {secondaries.length > 0 && (
-                <optgroup label="Secondaires">
-                  {secondaries.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.title}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-            <button
-              type="button"
-              onClick={() => openCreate('secondaire')}
-              className="shrink-0 cursor-pointer rounded-md border border-border bg-surface px-3.5 py-2.5 text-body font-medium text-ink-2 transition-colors duration-150 hover:border-border-strong"
-            >
-              + Secondaire
-            </button>
-          </div>
+          <div className="grid items-start gap-5 lg:grid-cols-[262px_1fr]">
+            <ObjectiveRail {...rail} variant="rail" className="hidden lg:flex" />
 
-          <div className="grid items-start gap-5 lg:grid-cols-[290px_1fr]">
-            <div className="hidden lg:block">
-              <ObjectivePicker
-                principals={principals}
-                secondaries={secondaries}
-                selectedId={selected?.id}
-                onSelect={setSelectedId}
-                onCreateSecondary={() => openCreate('secondaire')}
-                readOnly={readOnly}
-              />
-            </div>
-
-            {selected && (
+            {selected && window && today && (
               <ObjectiveDetail
                 key={selected.id}
                 objective={selected}
-                weekIndex={weekIndex}
-                objectiveWeeks={selectedWeeks}
-                activeDays={activeDaysQuery.data ?? new Set<string>()}
-                weekDays={today ? weekDaysOf(today) : []}
-                heatmapWeeks={heatmapWeeks}
-                monthLabels={monthLabels}
-                quarterWeeks={quarterWeekRefs}
-                ratings={ratingsQuery.data ?? NO_RATINGS}
+                periods={selectedPeriods}
+                regularity={regularityQuery.data?.get(selected.id)}
+                progress={progressQuery.data?.get(selected.id)}
+                entries={entriesQuery.data ?? []}
+                entriesError={entriesQuery.error}
                 milestones={milestonesByObjective.get(selected.id) ?? []}
-                quarter={selectedQuarter ?? currentQuarter!}
-                today={today!}
-                currentWeekNo={currentWeek!.isoWeek}
-                readOnly={readOnly}
-                onEdit={() => openEdit(selected)}
+                activeDays={activeDaysQuery.data ?? new Set<string>()}
+                weeks={window.weeks}
+                quarter={window.quarter}
+                today={today}
+                privacy={privacy}
+                reviewOpenAt={
+                  year
+                    ? openingsQuery.data?.get(openingKey('quarter', year, window.quarter))?.openAt
+                    : undefined
+                }
+                onEdit={() => {
+                  setEditing(selected)
+                  setEditOpen(true)
+                }}
+                onDeleted={() => setSelectedId(undefined)}
               />
             )}
           </div>
@@ -301,51 +235,43 @@ export function ObjectivesPage() {
       )}
 
       {userId && year && (
-        <ObjectiveFormModal
-          open={formOpen}
-          onClose={() => setFormOpen(false)}
+        <ObjectiveWizardModal
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
           userId={userId}
           year={year}
-          kind={formKind}
-          objective={editing}
+          principalSlotsUsed={rail.principalSlotsUsed}
+          secondarySlotsUsed={rail.secondarySlotsUsed}
+          onCreated={setSelectedId}
         />
       )}
+
+      <ObjectiveEditModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        objective={editing}
+      />
     </div>
   )
 }
 
-function EmptyObjectives({ onCreate }: { onCreate: () => void }) {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3.5 rounded-2xl border-[1.5px] border-dashed border-border-strong bg-surface px-5 py-16 text-center">
-      <span className="flex size-13 items-center justify-center rounded-xl bg-primary text-[24px] text-white">
-        ◎
-      </span>
-      <h2 className="text-[17px] font-semibold">Posez vos trois objectifs de l’année</h2>
-      <p className="max-w-105 text-body leading-relaxed text-ink-3">
-        Choisissez ce qui décidera si votre année a compté. Vos tâches viendront s’y relier, et
-        chaque semaine vous verrez votre régularité.
-      </p>
-      <button
-        type="button"
-        onClick={onCreate}
-        className="mt-2 cursor-pointer rounded-lg bg-primary px-5.5 py-3.5 text-body font-medium text-white shadow-primary transition-all duration-150 hover:-translate-y-px hover:bg-primary-hover hover:shadow-primary-hover active:translate-y-px active:bg-primary-active focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none"
-      >
-        Créer mon premier objectif
-      </button>
-    </div>
-  )
+/**
+ * Emplacements occupés **aujourd'hui**, arrêtés compris.
+ *
+ * Clôturer ne libère pas le slot : c'est la fin de la fenêtre qui le libère
+ * (SPEC §3). Un objectif de T1 ne bloque donc rien en T3, mais un annuel arrêté
+ * en février occupe sa place jusqu'au 31 décembre. Compter les seules lignes
+ * visibles annoncerait une place libre que le serveur refuserait en `slot_full`.
+ */
+function slotsUsed(objectives: Objective[], today: IsoDate | undefined, kind: ObjectiveKind) {
+  if (!today) return 0
+  return objectives.filter((o) => o.kind === kind && isWithinWindow(o, today)).length
 }
 
-/** Mois couverts par les colonnes de la heatmap, dans l'ordre, sans doublon. */
-function monthsOf(weeks: IsoDate[]): string[] {
-  const format = new Intl.DateTimeFormat('fr-FR', { month: 'short', timeZone: 'UTC' })
-  const seen = new Set<string>()
-  const labels: string[] = []
-  for (const monday of weeks) {
-    const key = monday.slice(0, 7)
-    if (seen.has(key)) continue
-    seen.add(key)
-    labels.push(format.format(new Date(`${monday}T12:00:00Z`)).replace('.', '').toUpperCase())
-  }
-  return labels
+function principalSlotsUsed(objectives: Objective[], today: IsoDate | undefined) {
+  return slotsUsed(objectives, today, 'principal')
+}
+
+function secondarySlotsUsed(objectives: Objective[], today: IsoDate | undefined) {
+  return slotsUsed(objectives, today, 'secondaire')
 }

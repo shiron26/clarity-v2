@@ -8,6 +8,7 @@ import { GearIcon } from '../icons/GearIcon'
 import { LogoutIcon } from '../icons/LogoutIcon'
 import { Avatar } from '../ui/Avatar'
 import { NAV_ITEMS } from './navItems'
+import { PrivacyToggle } from './PrivacyToggle'
 import { SidebarNavItem } from './SidebarNavItem'
 import { SidebarTaskSubnav } from './SidebarTaskSubnav'
 
@@ -38,11 +39,17 @@ export function Sidebar() {
         </Fragment>
       ))}
 
+      {/* Poussé en bas avec les réglages : c'est un interrupteur d'affichage,
+          pas une destination — il n'a rien à faire dans la liste des écrans. */}
+      <div className="mt-auto">
+        <PrivacyToggle variant="sidebar" />
+      </div>
+
       <button
         type="button"
         disabled
         title="Les réglages arriveront avec les pages de configuration"
-        className="mt-auto flex cursor-default items-center gap-2.5 rounded-md px-3 py-2.5 text-ui text-ink-muted"
+        className="flex cursor-default items-center gap-2.5 rounded-md px-3 py-2.5 text-ui text-ink-muted"
       >
         <GearIcon className="size-4 shrink-0" />
         Réglages

@@ -11,10 +11,10 @@ export function Textarea({ className, rows = 2, ...rest }: TextareaProps) {
     <textarea
       rows={rows}
       className={cn(
-        'w-full resize-none rounded-lg border-[1.5px] border-border bg-canvas px-4 py-[14px]',
+        'w-full resize-none rounded-lg border-[1.5px] border-border bg-surface px-4 py-[14px]',
         'text-ui text-ink placeholder:text-placeholder',
-        'transition-[border-color,background-color] duration-150',
-        'outline-none focus:border-primary focus:bg-surface',
+        'transition-[border-color,box-shadow] duration-150',
+        'outline-none focus:border-primary focus:ring-3 focus:ring-primary/14',
         className,
       )}
       {...rest}

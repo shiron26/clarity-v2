@@ -1,5 +1,6 @@
 import type { List } from '../../../hooks/useLists'
 import { cn } from '../../../lib/cn'
+import { DEFAULT_LIST_COLOR } from '../../../lib/listPalette'
 
 type ListPillsProps = {
   lists: List[]
@@ -28,14 +29,14 @@ export function ListPills({ lists, value, onChange }: ListPillsProps) {
             className={cn(
               BASE,
               selected
-                ? 'border-[#a9beff] bg-primary-soft font-semibold text-primary'
-                : 'border-border bg-canvas text-ink-3 hover:border-[#a9beff]',
+                ? 'border-border-primary-soft bg-primary-soft font-semibold text-primary'
+                : 'border-border bg-canvas text-ink-3 hover:border-border-primary-soft',
             )}
           >
             <span
               aria-hidden
               className="size-1.5 shrink-0 rounded-full"
-              style={{ backgroundColor: list.color ?? '#9a9aa6' }}
+              style={{ backgroundColor: list.color ?? DEFAULT_LIST_COLOR }}
             />
             {list.name}
           </button>

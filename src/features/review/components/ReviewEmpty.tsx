@@ -1,28 +1,28 @@
 import { Link } from 'react-router'
+import { EmptyState } from '../../../components/ui/EmptyState'
+import { ReviewIcon } from '../../../components/icons/ReviewIcon'
+import { buttonClasses } from '../../../components/ui/buttonClasses'
 
 /**
- * Rien à noter tant qu'il n'y a pas d'objectif : la review juge des objectifs,
- * pas des tâches. L'issue de secours pointe donc vers l'écran Objectifs.
+ * Rien à passer en revue tant qu'il n'y a pas d'objectif : le rituel constate ce
+ * qui a avancé, et sans objectif il n'y a rien à constater. L'issue de secours
+ * pointe donc vers l'écran Objectifs.
+ *
+ * Un `<Link>` ne peut pas *être* un `Button` (react-router rend une ancre), d'où
+ * `buttonClasses` — la raison même de son extraction.
  */
 export function ReviewEmpty() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3.5 rounded-2xl border-[1.5px] border-dashed border-border-strong bg-surface px-5 py-12 text-center lg:py-16">
-      <span className="flex size-12 items-center justify-center rounded-[15px] bg-night text-[20px] text-white lg:size-13 lg:rounded-xl lg:text-[22px]">
-        ▲
-      </span>
-      <h2 className="text-[16px] font-semibold lg:text-title">
-        Votre première review vous attend
-      </h2>
-      <p className="max-w-105 text-[12px] leading-relaxed text-ink-faint lg:text-body">
-        Dès que vous aurez un objectif et quelques tâches, vous pourrez noter votre semaine en
-        deux minutes.
-      </p>
-      <Link
-        to="/objectifs"
-        className="mt-2 cursor-pointer rounded-lg bg-primary px-5.5 py-3.5 text-body font-medium text-white shadow-primary transition-all duration-150 hover:-translate-y-px hover:bg-primary-hover hover:shadow-primary-hover active:translate-y-px active:bg-primary-active focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none"
-      >
-        Commencer par un objectif
-      </Link>
-    </div>
+    <EmptyState
+      icon={<ReviewIcon className="size-6" />}
+      title="Votre premier rituel vous attend"
+      description="Dès que vous aurez un objectif, le rendez-vous du dimanche vous montrera ce qui a avancé, et ce qu'il reste à rattraper."
+      action={
+        <Link to="/objectifs" className={buttonClasses({ size: 'lg', className: 'mt-2' })}>
+          Commencer par un objectif
+        </Link>
+      }
+      className="flex-1"
+    />
   )
 }

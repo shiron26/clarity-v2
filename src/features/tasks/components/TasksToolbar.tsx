@@ -1,25 +1,19 @@
 import { useRef, useState } from 'react'
-import { Link } from 'react-router'
 import { CalendarIcon } from '../../../components/icons/CalendarIcon'
 import { PlusIcon } from '../../../components/icons/PlusIcon'
 import { SearchIcon } from '../../../components/icons/SearchIcon'
 import { Button } from '../../../components/ui/Button'
+import { Kbd } from '../../../components/ui/Kbd'
 import { Menu } from '../../../components/ui/Menu'
 import { cn } from '../../../lib/cn'
-import { isDayScope, SCOPE_NAV_LABELS, type DateBucket, type TaskScope } from '../taskScope'
+import { type TaskScope } from '../taskScope'
 import { SORT_LABELS, SORT_OPTIONS, type SortMode } from '../taskSort'
-import { scopeSearch } from '../taskViewParams'
+import { TaskViewSwitcher, type ScopeCounts } from './TaskViewSwitcher'
 
 type TasksToolbarProps = {
   scope: TaskScope
-  /** Titre de la page — rendu pour les lecteurs d'écran seulement. */
-  title: string
-  /** Compteurs de la bascule Aujourd'hui ⇄ Demain. */
-  dayCounts: { today: number; tomorrow: number }
-  /** Compartiment de date affiché dans les vues multi-jours. */
-  bucket: DateBucket
-  onBucketChange: (bucket: DateBucket) => void
-  bucketCounts: { dated: number; undated: number }
+  listId: string | null
+  counts: ScopeCounts
   search: string
   onSearchChange: (value: string) => void
   sort: SortMode
@@ -27,24 +21,19 @@ type TasksToolbarProps = {
   onCreate: () => void
 }
 
-const CHIP =
-  'inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-2xl px-[15px] py-[7px] text-[13px] whitespace-nowrap transition-colors duration-150 focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none'
-
-const ACTIVE_CHIP = 'bg-primary-soft font-semibold text-primary'
-
 /**
- * L'en-tête de la carte de tâches (desktop). La maquette v2 y réunit ce qui
- * était éparpillé au-dessus : identité de la vue, recherche, tri et création.
- * En vue « jour », l'identité devient une bascule Aujourd'hui ⇄ Demain — c'est
- * le seul chemin vers « Demain », qui n'a pas d'entrée de navigation.
+ * L'en-tête de la carte de tâches (desktop). La maquette y réunit ce qui était
+ * éparpillé au-dessus : les quatre vues à gauche, la création poussée à droite.
+ *
+ * La recherche et le tri s'intercalent entre les deux : la maquette ne les
+ * dessine pas, mais la SPEC §5 les impose toujours (« recherche sur les titres,
+ * côté client », « tri manuel par défaut, la seule autre option étant
+ * l'importance ») — la maquette n'est pas exhaustive sur la barre d'outils.
  */
 export function TasksToolbar({
   scope,
-  title,
-  dayCounts,
-  bucket,
-  onBucketChange,
-  bucketCounts,
+  listId,
+  counts,
   search,
   onSearchChange,
   sort,
@@ -56,46 +45,34 @@ export function TasksToolbar({
 
   return (
     <div className="mb-4 hidden items-center gap-2.5 lg:flex">
+      {/* Purement décoratif : il cède la place aux quatre pastilles avant
+          qu'elles ne se serrent. */}
       <span
         aria-hidden
-        className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-primary text-[15px] text-white"
+        className="hidden size-[34px] shrink-0 items-center justify-center rounded-full bg-primary text-[15px] text-white xl:flex"
       >
-        {isDayScope(scope) ? '☀' : <CalendarIcon className="size-4" />}
+        {scope === 'today' ? '☀' : <CalendarIcon className="size-4" />}
       </span>
 
-      {isDayScope(scope) ? (
-        <>
-          {/* La bascule est faite de deux liens : le titre de la page reste dû. */}
-          <h1 className="sr-only">{title}</h1>
-          <ScopeLink scope="today" active={scope === 'today'} count={dayCounts.today} />
-          <ScopeLink scope="tomorrow" active={scope === 'tomorrow'} count={dayCounts.tomorrow} />
-        </>
-      ) : (
-        <>
-          {/* La v2 remplace le titre de vue par les deux compartiments de date :
-              le titre reste dû, en lecture d'écran. */}
-          <h1 className="sr-only">{title}</h1>
-          <div role="radiogroup" aria-label="Compartiment de date" className="flex items-center gap-2.5">
-            <BucketChip
-              bucket="dated"
-              label="Daté"
-              active={bucket === 'dated'}
-              count={bucketCounts.dated}
-              onPick={onBucketChange}
-            />
-            <BucketChip
-              bucket="undated"
-              label="Sans date"
-              active={bucket === 'undated'}
-              count={bucketCounts.undated}
-              onPick={onBucketChange}
-            />
-          </div>
-        </>
-      )}
+      <TaskViewSwitcher
+        scope={scope}
+        listId={listId}
+        counts={counts}
+        variant="chips"
+        className="shrink-0"
+      />
 
-      <div className="ml-auto flex items-center gap-2">
-        <label className="flex w-[170px] items-center gap-[7px] rounded-md bg-canvas px-3 py-2">
+      {/* Seule la recherche se comprime : les pastilles et les deux boutons
+          gardent leur taille, sinon le libellé du bouton se casse en deux.
+
+          Les trois contrôles font la même hauteur, et c'est un calcul, pas une
+          coïncidence : `Button` en taille `md` fait `text-body` + `py-[9px]` sans
+          bordure. Un contrôle bordé retrouve la même hauteur avec `py-2`, ses
+          deux bordures d'un pixel remplaçant les deux pixels de padding
+          manquants — la recette de la barre du dashboard. Sans bordure, comme la
+          recherche, c'est `py-[9px]` tel quel. */}
+      <div className="ml-auto flex min-w-0 items-center gap-2">
+        <label className="flex w-[130px] min-w-0 shrink items-center gap-[7px] rounded-md bg-canvas px-3 py-[9px] xl:w-[170px]">
           <SearchIcon className="size-[13px] shrink-0 text-ink-muted" />
           <span className="sr-only">Rechercher une tâche</span>
           <input
@@ -103,11 +80,11 @@ export function TasksToolbar({
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
             placeholder="Rechercher"
-            className="min-w-0 flex-1 bg-transparent text-label text-ink outline-none placeholder:text-placeholder"
+            className="min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-placeholder"
           />
         </label>
 
-        <span className="relative flex">
+        <span className="relative flex shrink-0">
           <button
             ref={sortTriggerRef}
             type="button"
@@ -115,8 +92,8 @@ export function TasksToolbar({
             aria-expanded={sortOpen}
             onClick={() => setSortOpen((current) => !current)}
             className={cn(
-              'cursor-pointer rounded-md border border-border bg-surface px-3.5 py-2 text-label font-medium whitespace-nowrap text-ink-3',
-              'transition-colors duration-150 hover:border-[#a9beff] hover:text-primary',
+              'cursor-pointer rounded-md border border-border bg-surface px-3.5 py-2 text-body font-medium whitespace-nowrap text-ink-3',
+              'transition-colors duration-150 hover:border-border-primary-soft hover:text-primary',
               'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
             )}
           >
@@ -139,68 +116,17 @@ export function TasksToolbar({
           />
         </span>
 
-        <Button onClick={onCreate} title="Raccourci : N" className="gap-1.5">
+        <Button
+          onClick={onCreate}
+          aria-keyshortcuts="N"
+          title="Raccourci : N"
+          className="shrink-0 gap-1.5 whitespace-nowrap"
+        >
           <PlusIcon className="size-3.5" />
           Nouvelle tâche
+          <Kbd className="ml-0.5">N</Kbd>
         </Button>
       </div>
     </div>
-  )
-}
-
-/** Une des deux pastilles de la bascule : une vraie navigation, donc un lien. */
-function ScopeLink({
-  scope,
-  active,
-  count,
-}: {
-  scope: 'today' | 'tomorrow'
-  active: boolean
-  count: number
-}) {
-  return (
-    <Link
-      to={{ pathname: '/taches', search: scopeSearch(scope) }}
-      aria-current={active ? 'page' : undefined}
-      className={cn(
-        CHIP,
-        active ? ACTIVE_CHIP : 'font-medium text-ink-3 hover:bg-surface-subtle hover:text-ink',
-      )}
-    >
-      {SCOPE_NAV_LABELS[scope]} {count}
-    </Link>
-  )
-}
-
-/**
- * Compartiment de date. Un bouton, pas un lien : contrairement à la portée, il ne
- * s'adresse pas — rien hors de cet en-tête ne le pilote (SPEC §5, rien n'est mémorisé).
- */
-function BucketChip({
-  bucket,
-  label,
-  active,
-  count,
-  onPick,
-}: {
-  bucket: DateBucket
-  label: string
-  active: boolean
-  count: number
-  onPick: (bucket: DateBucket) => void
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
-      onClick={() => onPick(bucket)}
-      className={cn(
-        CHIP,
-        active ? ACTIVE_CHIP : 'font-medium text-ink-3 hover:bg-surface-subtle hover:text-ink',
-      )}
-    >
-      {label} {count}
-    </button>
   )
 }

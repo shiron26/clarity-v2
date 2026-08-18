@@ -23,6 +23,36 @@
   --color-night-soft: #212229;
   --color-night-line: #2a2b33;
 
+  /* Grille de densité (ObjectiveHeatmap). Trois creux distincts, jamais
+     `transparent` : une case invisible fait lire la grille comme décalée à
+     droite, un trimestre encore vide n'affichant alors que son futur. */
+  --color-heat-empty: #20212c; /* passé sans séance */
+  --color-heat-live: #34364a; /* période en cours, encore jouable */
+  --color-heat-future: #1b1c24; /* à venir — c'est son liseré qui le dit */
+  --color-heat-future-line: #262734;
+
+  /* Frise de l'année (REFONTE §6) — la piste, sa grille de mois, et le contour
+     d'une fenêtre prévue mais pas vécue. Le voile qui assombrit le « pas encore »
+     reste une opacité, pas une couleur : il se pose PAR-DESSUS le dégradé du
+     slot, qui varie d'un objectif à l'autre. */
+  --color-timeline-track: #1d1e27; /* la piste vide, sous la barre */
+  --color-timeline-grid: #24252f; /* séparateur de mois */
+  --color-timeline-grid-strong: #32343f; /* séparateur de trimestre */
+  --color-timeline-ghost: #3a3c4d; /* fenêtre prévue, non vécue */
+
+  /* Le trait « aujourd'hui ». Orange et non bleu : le bleu est le seul signal
+     d'action de l'UI (DESIGN.md), un repère temporel n'en est pas une. */
+  --color-today: #ff9f43;
+
+  /* Les decks de cérémonie (rituel §7, bilan §8, retour §9). Plus sombres que
+     `night`, qui est la couleur d'un BLOC posé dans une page claire : un deck
+     occupe l'écran entier, il lui faut un sol à lui, sinon le dégradé radial
+     n'a plus rien à quoi se fondre. */
+  --color-deck: #0b0c11;
+  --color-deck-card: #191b23;
+  --color-deck-line: #262833; /* bordure d'une carte de deck */
+  --color-deck-idle: #2e3039; /* bordure d'un contrôle au repos */
+
   /* Texte — la hiérarchie se fait par contraste de gris, pas par la couleur */
   --color-ink: #17181f;
   --color-ink-2: #4a4b55;
@@ -30,6 +60,10 @@
   --color-ink-muted: #9a9aa6;
   --color-ink-faint: #8b8b93;
   --color-ink-onnight: #7c8097;
+  /* Le texte principal sur fond sombre, et son cran le plus discret (libellés
+     de jour et de mois d'une grille de densité). */
+  --color-ink-onnight-strong: #d5d6e0;
+  --color-ink-onnight-faint: #565866;
   --color-placeholder: #a5a5ad;
 
   /* Action — seul signal d'action de l'UI */
@@ -37,6 +71,17 @@
   --color-primary-hover: #0f4fd6;
   --color-primary-active: #0b3fae;
   --color-primary-soft: #e6ecff;
+  /* Survol d'une surface `primary-soft` cliquable — le bouton de bilan d'une
+     carte de trimestre. `primary-hover` est le bleu plein : l'appliquer ici
+     retournerait le contraste au lieu de l'appuyer. */
+  --color-primary-soft-hover: #d6e0ff;
+  /* La bordure d'un élément bleu-clair : pastille active, champ en édition,
+     cible de survol d'une invite pointillée. Plus soutenue que `primary-soft`
+     (un fond), plus discrète que `primary` (le trait d'une action). */
+  --color-border-primary-soft: #a9beff;
+  /* Le fond le plus pâle de la gamme : le survol d'une invite pointillée, là où
+     `primary-soft` se lirait déjà comme une sélection. */
+  --color-primary-tint: #f4f7ff;
   --color-link: #4a7aff;
   --color-link-hover: #8aa8ff;
 
@@ -126,6 +171,21 @@
   background-image: linear-gradient(150deg, #0044e0, #1a66ff 55%, #2f8bff);
 }
 
+/* Le sol d'un deck de cérémonie. Un halo par le haut, qui retombe sur `deck` :
+   c'est ce qui fait que le chiffre géant a l'air posé sur quelque chose plutôt
+   que flottant sur du noir. Même exception que ci-dessus — pas de token de
+   gradient en Tailwind v4. */
+@utility bg-deck-gradient {
+  background-image: radial-gradient(130% 55% at 50% 0%, #24262f 0%, #0e0f15 58%, #0b0c11 100%);
+}
+
+/* Le chiffre géant d'un écran de cérémonie : un bleu qui s'éclaircit vers le
+   bas, appliqué en `bg-clip-text`. Même exception que ci-dessus — un dégradé ne
+   s'exprime pas en token de couleur. Deux decks l'écrivaient en dur. */
+@utility bg-deck-number {
+  background-image: linear-gradient(180deg, #5b8cff 0%, #3f7dff 45%, #4aa8ff 100%);
+}
+
 @keyframes authIn {
   from {
     opacity: 0;
@@ -166,15 +226,31 @@
   }
 }
 
+/* `backwards` et non `both`, et c'est un piège à connaître : `both` maintient la
+   dernière image APRÈS la fin de l'animation, et le moteur la maintient sous forme
+   de matrice appliquée — `transform: matrix(1, 0, 0, 1, 0, 0)` — au lieu de
+   retirer la propriété. Une matrice identité reste un `transform`, donc l'élément
+   devient le BLOC CONTENEUR de ses descendants `position: fixed`, qui se
+   repositionnent dans son repère et se font rogner par son `overflow`. Le
+   calendrier d'échéance d'une modale de tâche (`Popover`) atterrissait ainsi dans
+   le coin du panneau, coupé. `backwards` applique la première image avant le
+   départ — c'est pour ça que `both` avait été choisi, éviter le clignotement au
+   montage — sans rien laisser derrière : la dernière image de ces animations est
+   de toute façon l'état naturel de l'élément. */
 @utility animate-slide-up {
-  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 /* Sorties de modale — la fermeture rejoue l'ouverture à l'envers. Même durée, même
    courbe retournée (le miroir de cubic-bezier(x1,y1,x2,y2) est
    cubic-bezier(1-x2,1-y2,1-x1,1-y1)). `EXIT_MS` (src/components/ui/Modal.tsx)
    reproduit cette durée : c'est lui qui décide du moment du démontage. Les modifier
-   ensemble ou pas du tout. */
+   ensemble ou pas du tout.
+
+   Elles gardent `both`, contrairement aux entrées : leur dernière image est un état
+   hors écran qu'il faut tenir jusqu'au démontage. La transformation résiduelle
+   qu'on évite à l'entrée est ici sans conséquence — plus aucun calque n'est ouvert
+   pendant la descente. */
 @keyframes sheetDown {
   from {
     transform: none;
@@ -206,16 +282,20 @@
   animation: slideDown 0.36s cubic-bezier(0.7, 0, 0.84, 0) both;
 }
 
-/* Le voile s'efface par sa COULEUR, pas par `opacity` : le panneau est son enfant,
-   et une opacité posée ici l'emporterait dans le fondu au lieu de le laisser
-   descendre. C'est toute la différence entre « la feuille se referme » et « la
-   feuille s'éteint ». */
+/* Le voile s'efface en `opacity`, et c'est ce qui rend la sortie fluide : une
+   couleur de fond ne se compose pas, elle se repeint — sur toute la surface de
+   l'écran, à chaque image, pendant que le panneau glisse par-dessus.
+   L'opacité n'est possible que parce que le voile est une COUCHE À PART
+   (`Modal`), et non plus le parent du panneau : posée sur le parent, elle
+   emporterait le panneau dans le fondu au lieu de le laisser descendre. C'est
+   toute la différence entre « la feuille se referme » et « la feuille
+   s'éteint ». */
 @keyframes scrimOut {
   from {
-    background-color: rgb(16 17 22 / 0.45);
+    opacity: 1;
   }
   to {
-    background-color: rgb(16 17 22 / 0);
+    opacity: 0;
   }
 }
 
@@ -273,8 +353,10 @@
   }
 }
 
+/* `backwards` pour la même raison que `animate-slide-up` : ne pas laisser de
+   transformation résiduelle sous les calques `fixed` de la feuille. */
 @utility animate-sheet-up {
-  animation: sheetUp 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: sheetUp 0.36s cubic-bezier(0.4, 0, 0.2, 1) backwards;
 }
 
 /* Case du jour en cours dans la heatmap : respiration lente. */

@@ -11,48 +11,48 @@ const VIEW_PARAM = 'vue'
 const LIST_PARAM = 'liste'
 const LISTS_PARAM = 'listes'
 
-const VIEW_VALUES: Record<Exclude<TaskScope, 'list'>, string> = {
+const VIEW_VALUES: Record<TaskScope, string> = {
   today: 'aujourdhui',
-  tomorrow: 'demain',
   week: 'semaine',
+  undated: 'sans-date',
   all: 'toutes',
 }
 
 const VIEW_BY_VALUE = new Map(
-  Object.entries(VIEW_VALUES).map(([scope, value]) => [value, scope as Exclude<TaskScope, 'list'>]),
+  Object.entries(VIEW_VALUES).map(([scope, value]) => [value, scope as TaskScope]),
 )
 
 export type TaskParams = {
   scope: TaskScope
-  /** Renseigné seulement quand `scope === 'list'`. */
+  /** La liste ouverte, s'il y en a une. Elle **restreint** la vue, elle ne la
+   *  remplace pas : les deux paramètres se combinent. */
   listId: string | null
   listsOpen: boolean
 }
 
 export function parseTaskParams(params: URLSearchParams): TaskParams {
-  const listId = params.get(LIST_PARAM)
-  const view = params.get(VIEW_PARAM)
-  const scope: TaskScope = listId ? 'list' : (VIEW_BY_VALUE.get(view ?? '') ?? 'today')
-
   return {
-    scope,
-    listId: scope === 'list' ? listId : null,
+    scope: VIEW_BY_VALUE.get(params.get(VIEW_PARAM) ?? '') ?? 'today',
+    listId: params.get(LIST_PARAM),
     listsOpen: params.get(LISTS_PARAM) === '1',
   }
 }
 
-/** `?vue=semaine` — la chaîne à donner à un `Link`/`NavLink`. */
-export function scopeSearch(scope: Exclude<TaskScope, 'list'>): string {
-  return `?${VIEW_PARAM}=${VIEW_VALUES[scope]}`
+/**
+ * `?vue=semaine` — la chaîne à donner à un `Link`/`NavLink`. La liste courante
+ * est reconduite : changer d'onglet depuis une liste filtre dedans, il n'en
+ * fait pas sortir.
+ */
+export function scopeSearch(scope: TaskScope, listId?: string | null): string {
+  const next = new URLSearchParams({ [VIEW_PARAM]: VIEW_VALUES[scope] })
+  if (listId) next.set(LIST_PARAM, listId)
+  return `?${next}`
 }
 
-/** `?liste=<uuid>` */
+/** `?liste=<uuid>` — sans `vue`, donc ouvrir une liste retombe sur « Aujourd'hui ». */
 export function listSearch(listId: string): string {
   return `?${LIST_PARAM}=${encodeURIComponent(listId)}`
 }
-
-/** `?listes=1` — ouvre « Gérer les listes » depuis n'importe où. */
-export const MANAGE_LISTS_SEARCH = `?${LISTS_PARAM}=1`
 
 /** Ouvre « Gérer les listes » sans quitter la vue courante. */
 export function withLists(params: URLSearchParams): URLSearchParams {

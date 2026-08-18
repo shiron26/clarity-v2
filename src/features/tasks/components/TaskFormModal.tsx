@@ -26,6 +26,7 @@ import {
   importantButtonClass,
 } from './taskSheet'
 import { ToolbarToggle } from './ToolbarToggle'
+import { buttonClasses } from '../../../components/ui/buttonClasses'
 
 type TaskFormModalProps = {
   open: boolean
@@ -35,6 +36,9 @@ type TaskFormModalProps = {
   today: IsoDate
   /** En vue « liste », la nouvelle tâche naît dans cette liste. */
   defaultListId: string | null
+  /** Échéance proposée. `null` depuis la vue « Sans date » : une tâche datée
+   *  n'y apparaîtrait pas, et le pool est précisément ce qu'on ne date pas. */
+  defaultDueDate: IsoDate | null
   /** Rang de la nouvelle ligne dans l'ordre manuel. */
   nextPosition: number
 }
@@ -48,6 +52,7 @@ export function TaskFormModal({
   lists,
   today,
   defaultListId,
+  defaultDueDate,
   nextPosition,
 }: TaskFormModalProps) {
   const { session } = useAuth()
@@ -64,7 +69,7 @@ export function TaskFormModal({
   const [objectiveId, setObjectiveId] = useState<string | null>(null)
   const [listId, setListId] = useState<string | null>(defaultListId)
   const [important, setImportant] = useState(false)
-  const [dueDate, setDueDate] = useState<IsoDate | null>(today)
+  const [dueDate, setDueDate] = useState<IsoDate | null>(defaultDueDate)
   const [preset, setPreset] = useState<RecurrencePreset>('none')
   const [interval, setIntervalValue] = useState(1)
   const [weekdays, setWeekdays] = useState<number[]>([])
@@ -89,13 +94,13 @@ export function TaskFormModal({
     setObjectiveId(null)
     setListId(defaultListId)
     setImportant(false)
-    setDueDate(today)
+    setDueDate(defaultDueDate)
     setPreset('none')
     setIntervalValue(1)
     setWeekdays([])
     setDueOpen(false)
     setRecurrenceOpen(false)
-  }, [defaultListId, today])
+  }, [defaultListId, defaultDueDate])
 
   // Le formulaire repart à neuf à chaque ouverture — jamais de reste de la fois d'avant.
   useEffect(() => {
@@ -229,7 +234,7 @@ export function TaskFormModal({
             placeholder="Description…"
             aria-label="Description de la tâche"
             onChange={(event) => setDescription(event.target.value)}
-            className="mt-2 w-full resize-none rounded-lg border-[1.5px] border-border bg-canvas px-3.5 py-2.5 text-[12px] text-ink outline-none placeholder:text-placeholder focus:border-primary focus:bg-surface"
+            className="mt-2 w-full resize-none rounded-lg border-[1.5px] border-border bg-surface px-3.5 py-2.5 text-[12px] text-ink outline-none placeholder:text-placeholder focus:border-primary"
           />
         ) : (
           <button
@@ -395,14 +400,9 @@ export function TaskFormModal({
               type="submit"
               form={formId}
               disabled={!ready || createTask.isPending}
-              className={cn(
-                'shrink-0 cursor-pointer rounded-md px-4.5 py-2.5 text-[12px] font-medium whitespace-nowrap text-white',
-                'transition-[background-color,box-shadow,transform] duration-150',
-                'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
-                ready
-                  ? 'bg-primary hover:-translate-y-px hover:bg-primary-hover hover:shadow-primary-hover active:translate-y-px active:bg-primary-active'
-                  : 'cursor-default bg-border-idle',
-              )}
+              className={buttonClasses({
+                className: 'shrink-0 px-4.5 py-2.5 text-[12px] whitespace-nowrap',
+              })}
             >
               Ajouter ↵
             </button>

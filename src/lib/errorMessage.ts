@@ -15,14 +15,28 @@ const OFFLINE = 'Connexion au serveur impossible. Vérifiez votre connexion, pui
 // elles arrivent toutes en P0001, seule la chaîne les distingue. Certaines
 // portent un suffixe « : détail », d'où la comparaison sur le préfixe.
 const BUSINESS_RULES: Array<[string, string]> = [
-  ['slot_full', 'Tous les emplacements sont pris pour cette année : trois objectifs principaux, cinq secondaires.'],
+  // « Sur cette période » et non « cette année » : un slot se libère à la fin
+  // de la fenêtre de l'objectif qui l'occupe, pas au 31 décembre.
+  ['slot_full', 'Tous les emplacements sont pris sur cette période : trois objectifs principaux, cinq secondaires.'],
   ['milestone_cap', 'Quatre jalons maximum par trimestre.'],
   ['objective_year_archived', 'Cette année est archivée : elle ne peut plus être modifiée.'],
   ['objective_archived_read_only', 'Cette année est archivée : elle ne peut plus être modifiée.'],
   ['milestone_archived_read_only', 'Cette année est archivée : elle ne peut plus être modifiée.'],
-  ['objective_identity_immutable', 'La nature et l’année d’un objectif ne peuvent plus changer.'],
+  ['objective_identity_immutable', 'La nature, la période et la façon de mesurer un objectif ne changent plus après sa création.'],
   ['milestone_quarter_immutable', 'Un jalon ne se déplace pas d’un trimestre à l’autre — réécrivez-le ailleurs.'],
   ['objective_write_not_allowed', 'Vous n’avez pas accès à cet objectif.'],
+  // Saisies d'un objectif quantifié.
+  ['objective_entry_not_quantified', 'Cet objectif ne se mesure pas en valeurs — il n’attend pas de relevé.'],
+  ['objective_entry_identity_immutable', 'Un relevé ne change pas de date : corrigez sa valeur, ou effacez-le.'],
+  ['objective_entry_objective_not_found', 'Cet objectif n’existe plus.'],
+  // Séances réparées depuis le rituel (REFONTE §7). `day` est la seule date que
+  // le client choisisse : ces quatre règles sont ce qui la borne, et l'écran 2
+  // désactive déjà les cases correspondantes — la copie sert de filet.
+  ['objective_session_not_habit', 'Cet objectif ne se compte pas en séances.'],
+  ['objective_session_future', 'On n’enregistre pas une séance qui n’a pas encore eu lieu.'],
+  ['objective_session_out_of_window', 'Ce jour est en dehors de la période de cet objectif.'],
+  ['objective_session_closed', 'Cet objectif est arrêté : son passé ne se modifie plus.'],
+  ['objective_session_objective_not_found', 'Cet objectif n’existe plus.'],
   ['milestone_write_not_allowed', 'Vous n’avez pas accès à cet objectif.'],
   // Tâches et listes. Le vocabulaire produit ne dit jamais « fork » : une
   // déclinaison personnelle d'un objectif d'espace est un « objectif repris ».
@@ -56,8 +70,11 @@ const BUSINESS_RULES: Array<[string, string]> = [
   ['review_item_scope_space', 'Dans un espace, chacun ne note que ses propres objectifs repris.'],
   ['review_item_not_member', 'Vous ne faites plus partie de cet espace.'],
   ['review_item_fork_space_mismatch', 'Cet objectif appartient à un autre espace.'],
-  ['review_item_achieved_year_only', 'Le verdict « atteint » ne se pose qu’au bilan annuel.'],
+  // Depuis REFONTE §8, le verdict existe aussi au trimestre : la règle ne vaut
+  // plus que pour la semaine, et sa copie ne peut plus dire « annuel ».
+  ['review_item_achieved_year_only', 'Le verdict « atteint » ne se pose pas sur une semaine.'],
   ['review_item_rating_not_for_year', 'Le bilan annuel se conclut par un verdict, pas par une note.'],
+  ['review_item_verdict_exclusive', 'Un objectif se note, ou reçoit un verdict — pas les deux.'],
   ['review_item_review_not_found', 'Cette review n’existe plus.'],
   ['review_item_objective_not_found', 'Cet objectif n’existe plus.'],
   ['review_item_identity_immutable', 'Une note ne change ni de review ni d’objectif.'],

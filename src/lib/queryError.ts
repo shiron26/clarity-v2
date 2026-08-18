@@ -28,7 +28,7 @@ export type ErrorKind =
   | 'conflict'
   | 'unknown'
 
-type ErrorShape = { code?: unknown; status?: unknown; message?: unknown }
+type ErrorShape = { code?: unknown; status?: unknown; message?: unknown; name?: unknown }
 
 function shapeOf(error: unknown): ErrorShape {
   return typeof error === 'object' && error !== null ? (error as ErrorShape) : {}
@@ -50,16 +50,23 @@ export function errorMessageText(error: unknown): string | null {
 }
 
 /** Status HTTP — présent sur les erreurs GoTrue uniquement. */
-export function errorStatus(error: unknown): number | null {
+function errorStatus(error: unknown): number | null {
   const { status } = shapeOf(error)
   return typeof status === 'number' ? status : null
 }
 
 function isTransportFailure(error: unknown): boolean {
   if (error instanceof TypeError) return true
+  const { code, message, name } = shapeOf(error)
+  // GoTrue, lui, emballe la panne réseau dans une `AuthRetryableFetchError` :
+  // `code` absent, `status: 0` — seul le `name` la distingue d'une erreur
+  // applicative. Sans ce test elle tombe en `unknown` et les pages auth
+  // affichent la copie générique au lieu de la copie offline. La même classe
+  // couvre les 502/503/504 de GoTrue : « connexion au serveur impossible »
+  // reste vrai dans ce cas.
+  if (name === 'AuthRetryableFetchError') return true
   // L'objet postgrest-js d'échec réseau : code vide + message préfixé du nom de
   // l'erreur fetch. C'est le seul signal disponible, d'où le regex ancré.
-  const { code, message } = shapeOf(error)
   return code === '' && typeof message === 'string' && /^(TypeError|FetchError|AbortError)/.test(message)
 }
 
@@ -90,6 +97,11 @@ export function classifyError(error: unknown): ErrorKind {
     case '23505':
     case '23503':
     case '23514':
+    // Contrainte d'EXCLUSION : depuis que les slots sont uniques par
+    // chevauchement de fenêtre, une collision remonte en 23P01 et non plus en
+    // 23505. Sans ce cas, elle tomberait en `unknown` — donc en « une erreur est
+    // survenue de notre côté » alors que c'est un conflit de données.
+    case '23P01':
       return 'conflict'
   }
 
@@ -102,3 +114,14 @@ export function classifyError(error: unknown): ErrorKind {
 export function isRetryableKind(kind: ErrorKind): boolean {
   return kind === 'authTransient' || kind === 'offline'
 }
+
+/**
+ * La politique de retry des **mutations** : seul un `PGRST301` transitoire se
+ * retente, et trois fois au plus.
+ *
+ * Ici et non dans chaque fichier de mutations : quatre hooks la portaient, deux
+ * en constante et deux en lambda inline. C'est aussi le module qui décide ce
+ * qu'est un `authTransient` — la règle et sa classification vivent ensemble.
+ */
+export const retryAuthTransient = (failureCount: number, error: Error) =>
+  classifyError(error) === 'authTransient' && failureCount < 3

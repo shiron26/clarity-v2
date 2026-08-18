@@ -27,8 +27,8 @@ export const DISCLOSURE_ROW = cn(
 
 /** Champ titre : 14 px en feuille, 13.5 px une fois la modale posée en desktop. */
 export const TITLE_INPUT = cn(
-  'min-w-0 flex-1 rounded-panel border-[1.5px] border-border bg-canvas p-[15px] text-[14px] text-ink outline-none',
-  'placeholder:text-placeholder focus:border-primary focus:bg-surface',
+  'min-w-0 flex-1 rounded-panel border-[1.5px] border-border bg-surface p-[15px] text-[14px] text-ink outline-none',
+  'placeholder:text-placeholder focus:border-primary',
   'sm:rounded-lg sm:px-3.5 sm:py-3 sm:text-[13.5px]',
 )
 
@@ -37,6 +37,6 @@ export function importantButtonClass(active: boolean) {
   return cn(
     'flex w-[52px] shrink-0 cursor-pointer items-center justify-center rounded-panel border-[1.5px] text-[17px]',
     'transition-colors duration-150 focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none sm:hidden',
-    active ? 'border-[#a9beff] bg-danger-bg text-danger' : 'border-border bg-canvas text-ink-muted',
+    active ? 'border-border-primary-soft bg-danger-bg text-danger' : 'border-border bg-canvas text-ink-muted',
   )
 }

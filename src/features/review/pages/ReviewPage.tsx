@@ -1,29 +1,55 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Spinner } from '../../../components/ui/Spinner'
-import { ErrorState } from '../../../components/ui/ErrorState'
+import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { useAppToday } from '../../../hooks/useAppToday'
-import { useObjectives, selectPrincipals, selectSecondaries } from '../../../hooks/useObjectives'
-import { NO_RATINGS, quarterRatingKey, useQuarterRatings } from '../../../hooks/useQuarterRatings'
-import { openingKey, useReviewOpenings } from '../../../hooks/useReviewOpenings'
-import { useReview, useReviewItems, type PeriodRef } from '../../../hooks/useReview'
+import {
+  selectPrincipals,
+  selectSecondaries,
+  useObjectives,
+} from '../../../hooks/useObjectives'
 import { useEnsureReview } from '../../../hooks/useReviewMutations'
+import { useRitualWeek } from '../../../hooks/useRitualWeek'
+import { useReview, useWeekReviews, weekReviewKey, type Review } from '../../../hooks/useReview'
+import { openingKey, useReviewOpenings } from '../../../hooks/useReviewOpenings'
+import { useQueriesState } from '../../../hooks/useQueriesState'
+import { anyLoading } from '../../../lib/queryLoading'
 import { useAuth } from '../../auth/useAuth'
-import { dataErrorMessage } from '../../../lib/errorMessage'
+import { objectivesForQuarter, objectivesForWeek } from '../../../lib/reviewPeriod'
 import {
   isoWeek,
   quarterAnchor,
   quarterOf,
   weeksOfQuarterRefs,
   year as yearOf,
+  type IsoDate,
+  type WeekRef,
 } from '../../../lib/appDate'
+import { ErrorState } from '../../../components/ui/ErrorState'
+import { dataErrorMessage } from '../../../lib/errorMessage'
+import { PageError, PageLoading } from '../../../components/layout/PageState'
 import { ReviewEmpty } from '../components/ReviewEmpty'
-import { ReviewFlow } from '../components/ReviewFlow'
-import { ReviewHub } from '../components/ReviewHub'
-import { objectivesForPeriod } from '../reviewPeriod'
+import { RitualHub } from '../components/RitualHub'
+import { RitualFlow } from '../components/RitualFlow'
+import { ritualBanner } from '../ritualContent'
 
-type FlowKind = 'week' | 'quarter'
+/** Le rituel en cours de traversée — figé pour la durée de la séance. */
+type ActiveRitual = { review: Review; start: IsoDate; weekNo: number }
 
+/**
+ * `/review` — le hub du rituel, et le rituel par-dessus.
+ *
+ * La page n'ouvre plus le flux toute seule. Elle montre d'abord où l'on en est
+ * dans le trimestre : sans ça, une semaine sans rendez-vous à tenir affichait
+ * une phrase seule au milieu du vide, alors que douze autres semaines avaient
+ * quelque chose à raconter.
+ *
+ * La bannière ne choisit pas sa période : `useRitualWeek` la donne, et c'est la
+ * même source que l'encart du dashboard. Les deux ne peuvent donc pas se
+ * contredire. La grille, elle, ouvre n'importe quelle semaine déjà ouverte — un
+ * rituel reste faisable après coup, « il n'est jamais une porte » (REFONTE §7).
+ * « Rien ne s'empile » borne les **rappels**, pas l'accès.
+ */
 export function ReviewPage() {
+  const navigate = useNavigate()
   const { session } = useAuth()
   const userId = session?.user.id
 
@@ -32,234 +58,221 @@ export function ReviewPage() {
 
   const currentYear = today ? yearOf(today) : undefined
   const currentQuarter = today ? quarterOf(today) : undefined
-  const currentWeek = today ? isoWeek(today) : undefined
+  const currentWeekRef = today ? isoWeek(today) : undefined
 
-  const [selectedYear, setSelectedYear] = useState<number | undefined>()
-  const [selectedQuarter, setSelectedQuarter] = useState<number | undefined>()
-  const [selectedWeek, setSelectedWeek] = useState<number | undefined>()
-  const [flow, setFlow] = useState<FlowKind | null>(null)
+  const [pickedYear, setPickedYear] = useState<number>()
+  const [pickedQuarter, setPickedQuarter] = useState<number>()
+  const year = pickedYear ?? currentYear
+  const quarter = pickedQuarter ?? currentQuarter
 
-  // L'écran s'ouvre sur la période vécue par le serveur, jamais sur celle du
-  // navigateur — puis suit les choix de l'utilisateur (cf. ObjectivesPage).
-  useEffect(() => {
-    if (selectedYear === undefined && currentYear) setSelectedYear(currentYear)
-    if (selectedQuarter === undefined && currentQuarter) setSelectedQuarter(currentQuarter)
-  }, [currentYear, currentQuarter, selectedYear, selectedQuarter])
-
-  const year = selectedYear
-  const quarter = selectedQuarter
+  /**
+   * Le rituel ouvert, **verrouillé** une fois qu'il a commencé.
+   *
+   * Sans ce verrou, l'écran 4 se saborde : « Terminer » valide la session,
+   * `useRitualWeek` cesse aussitôt de rendre un rituel en attente, et l'overlay
+   * disparaît avant d'avoir montré la projection. Or c'est précisément l'écran
+   * qui RETOURNE quelque chose — les trois autres demandent. On ne le laisse pas
+   * dépendre d'un état serveur que le rituel lui-même vient de changer.
+   */
+  const [active, setActive] = useState<ActiveRitual | null>(null)
 
   const weeks = useMemo(
     () => (year && quarter ? weeksOfQuarterRefs(quarterAnchor(year, quarter)) : []),
     [year, quarter],
   )
+  // Une grille de trimestre peut enjamber deux années ISO : la semaine du
+  // 1er janvier appartient parfois encore à l'année précédente.
+  const isoYears = useMemo(() => [...new Set(weeks.map((w) => w.isoYear))], [weeks])
 
-  // La semaine mise en avant : celle en cours si le trimestre affiché la
-  // contient, sinon la dernière déjà vécue, sinon la première.
-  const defaultWeek = useMemo(() => {
-    if (weeks.length === 0 || !today) return undefined
-    const live = weeks.find((w) => w.weekNo === currentWeek?.isoWeek)
-    if (live) return live.weekNo
-    const lived = [...weeks].reverse().find((w) => w.monday <= today)
-    return (lived ?? weeks[0])!.weekNo
-  }, [weeks, today, currentWeek])
+  const openingsQuery = useReviewOpenings(year ? [...isoYears, year] : [])
+  const weekReviewsQuery = useWeekReviews(isoYears)
+  const quarterReviewQuery = useReview(
+    year && quarter ? { type: 'quarter', year, index: quarter } : undefined,
+  )
 
-  // Changer de trimestre ou d'année remet la sélection sur cette semaine-là.
-  useEffect(() => {
-    setSelectedWeek(undefined)
-  }, [year, quarter])
+  const ritual = useRitualWeek()
 
-  // Le numéro suffit à identifier la semaine DANS la grille (treize semaines
-  // consécutives ne répètent jamais un numéro) ; l'année ISO se relit ensuite
-  // sur la semaine elle-même, elle ne se déduit pas du trimestre.
-  const week = selectedWeek ?? defaultWeek
-  const selected = weeks.find((w) => w.weekNo === week)
-  const selectedMonday = selected?.monday
-  const selectedIsoYear = selected?.isoYear
+  // La bannière porte le rendez-vous qui attend ; à défaut, la semaine en cours.
+  // Hors du trimestre qui la contient, il n'y a rien à commencer depuis le haut
+  // de page : la grille se suffit.
+  const bannerWeek = useMemo((): WeekRef | null => {
+    const target = ritual.pending
+      ? { isoYear: ritual.pending.week.isoYear, weekNo: ritual.pending.week.isoWeek }
+      : currentWeekRef
+        ? { isoYear: currentWeekRef.isoYear, weekNo: currentWeekRef.isoWeek }
+        : null
+    if (!target) return null
+    return (
+      weeks.find((w) => w.isoYear === target.isoYear && w.weekNo === target.weekNo) ?? null
+    )
+  }, [ritual.pending, currentWeekRef, weeks])
 
-  const objectivesQuery = useObjectives(year)
+  // Les objectifs se lisent sur l'année civile du lundi en jeu, pas sur celle du
+  // sélecteur : une grille de premier trimestre mord sur décembre précédent.
+  const objectiveYear = useMemo(() => {
+    const anchorDay = active?.start ?? bannerWeek?.monday
+    if (anchorDay) return yearOf(anchorDay)
+    return year && quarter ? yearOf(quarterAnchor(year, quarter)) : undefined
+  }, [active, bannerWeek, year, quarter])
+
+  const objectivesQuery = useObjectives(objectiveYear)
   const principals = useMemo(
     () => selectPrincipals(objectivesQuery.data),
     [objectivesQuery.data],
   )
-  const secondaries = useMemo(
-    () => selectSecondaries(objectivesQuery.data),
-    [objectivesQuery.data],
+
+  /**
+   * Les semaines de la grille qui ont quelque chose à passer en revue.
+   *
+   * Les ouvertures viennent du serveur et sont **globales** : il ne sait pas
+   * depuis quand un compte existe, donc les treize semaines du trimestre
+   * d'arrivée sont « ouvertes ». Sans ce comptage, cliquer une semaine antérieure
+   * aux objectifs ouvrait un rituel sans sujet. Même fonction que la bannière,
+   * pour que les deux ne puissent pas se contredire.
+   */
+  const reviewable = useMemo(
+    () =>
+      new Set(
+        weeks
+          .filter((w) => objectivesForWeek(principals, w.monday).length > 0)
+          .map((w) => w.monday),
+      ),
+    [weeks, principals],
   )
 
-  // Portée par niveau (SPEC §4.4), puis filtre de clôture : un objectif clôturé
-  // disparaît des périodes qui commencent après sa clôture.
-  const weekObjectives = useMemo(
-    () => (selectedMonday ? objectivesForPeriod(principals, selectedMonday) : []),
-    [principals, selectedMonday],
+  // Le bilan du trimestre juge les principaux ET les secondaires, comme
+  // `BilanPage` : la pastille doit se taire exactement quand la page le ferait.
+  const quarterHasSubjects = useMemo(() => {
+    if (!year || !quarter) return false
+    const subjects = [
+      ...selectPrincipals(objectivesQuery.data),
+      ...selectSecondaries(objectivesQuery.data),
+    ]
+    return objectivesForQuarter(subjects, year, quarter).length > 0
+  }, [objectivesQuery.data, year, quarter])
+
+  // Un objectif clôturé reste vu une dernière fois sur la période qu'il a vécue,
+  // et un objectif trimestriel ne se montre que sur SA fenêtre.
+  const activeObjectives = useMemo(
+    () => (active ? objectivesForWeek(principals, active.start) : []),
+    [principals, active],
   )
-  // Le bilan trimestriel ajoute les secondaires : c'est le seul rituel qui les
-  // juge, puisqu'ils n'ont pas de cadence hebdomadaire (SPEC §4.4).
-  const quarterObjectives = useMemo(() => {
-    if (!year || !quarter) return []
-    return objectivesForPeriod(
-      [...principals, ...secondaries],
-      quarterAnchor(year, quarter),
+
+  const banner = useMemo(() => {
+    if (!bannerWeek) return null
+    const opening = openingsQuery.data?.get(
+      openingKey('week', bannerWeek.isoYear, bannerWeek.weekNo),
     )
-  }, [principals, secondaries, year, quarter])
+    const review = weekReviewsQuery.data?.get(
+      weekReviewKey(bannerWeek.isoYear, bannerWeek.weekNo),
+    )
+    return ritualBanner({
+      weekNo: bannerWeek.weekNo,
+      currentWeekNo: currentWeekRef?.isoWeek,
+      monday: bannerWeek.monday,
+      objectiveCount: objectivesForWeek(principals, bannerWeek.monday).length,
+      isOpen: opening?.isOpen ?? false,
+      openAt: opening?.openAt,
+      validatedAt: review?.validated_at ?? null,
+    })
+  }, [bannerWeek, openingsQuery.data, weekReviewsQuery.data, currentWeekRef, principals])
 
-  const gridObjectiveIds = useMemo(() => principals.map((o) => o.id), [principals])
-
-  const ratingsQuery = useQuarterRatings(gridObjectiveIds, weeks, quarter)
-  const ratings = ratingsQuery.data ?? NO_RATINGS
-
-  // Les années à interroger : celle du trimestre affiché (pour son bilan) et les
-  // années ISO de ses semaines, qui peuvent déborder d'un cran.
-  const openingYears = useMemo(
-    () => (year ? [year, ...weeks.map((w) => w.isoYear)] : []),
-    [year, weeks],
-  )
-  const openingsQuery = useReviewOpenings(openingYears)
-  const openings = openingsQuery.data
-
-  const quarterPeriod: PeriodRef | undefined =
-    year && quarter ? { type: 'quarter', year, index: quarter } : undefined
-  const quarterReviewQuery = useReview(quarterPeriod)
-  const quarterReview = quarterReviewQuery.data ?? undefined
-  const quarterItemsQuery = useReviewItems(quarterReview?.id)
-
+  // La session doit exister avant que l'overlay n'écrive quoi que ce soit :
+  // `review.id` est la cible de la validation finale. `useEnsureReview` rend
+  // celle qui existe déjà, donc rouvrir une semaine passée ne crée rien.
   const ensureReview = useEnsureReview()
 
-  const ratedCount = useMemo(() => {
-    if (week === undefined || selectedIsoYear === undefined) return 0
-    return weekObjectives.filter(
-      (o) => ratings.get(quarterRatingKey(o.id, selectedIsoYear, week)) !== undefined,
-    ).length
-  }, [weekObjectives, ratings, week, selectedIsoYear])
-
-  const quarterDone = useMemo(() => {
-    const items = quarterItemsQuery.data
-    if (!items || quarterObjectives.length === 0) return false
-    return quarterObjectives.every((o) => items.get(o.id)?.rating != null)
-  }, [quarterItemsQuery.data, quarterObjectives])
+  const openWeek = (week: WeekRef) => {
+    if (!userId) return
+    // La carte est déjà inerte dans ce cas ; ce garde-fou couvre la bannière et
+    // tout futur appelant. Ouvrir un rituel sans sujet n'affiche rien.
+    if (!reviewable.has(week.monday)) return
+    ensureReview
+      .mutateAsync({
+        userId,
+        period: { type: 'week', year: week.isoYear, index: week.weekNo },
+      })
+      .then((review) => setActive({ review, start: week.monday, weekNo: week.weekNo }))
+      .catch(() => {
+        // Affichée par `useQueriesState` via `ensureReview.error`.
+      })
+  }
 
   const queries = [
     todayQuery,
     objectivesQuery,
-    ratingsQuery,
     openingsQuery,
+    weekReviewsQuery,
     quarterReviewQuery,
-    quarterItemsQuery,
   ]
-  const failed = queries.filter((q) => q.error !== null)
-  const firstError = failed[0]?.error ?? null
-  const retrying = failed.some((q) => q.isFetching)
+  const { firstError, retrying, onRetry } = useQueriesState(
+    queries,
+    ensureReview.error ?? ritual.error,
+  )
 
-  function handleRetry() {
-    for (const query of failed) void query.refetch()
-  }
+  // `anyLoading` et jamais `isPending` : `useObjectives` est désactivé sans année,
+  // et une query désactivée reste « pending » à vie (voir `lib/queryLoading.ts`).
+  if (anyLoading([todayQuery, objectivesQuery])) return <PageLoading />
 
-  const weekOpening =
-    week !== undefined && selectedIsoYear !== undefined
-      ? openings?.get(openingKey('week', selectedIsoYear, week))
-      : undefined
-  const quarterOpening =
-    year && quarter ? openings?.get(openingKey('quarter', year, quarter)) : undefined
-
-  function periodFor(kind: FlowKind): PeriodRef | undefined {
-    if (!year || !quarter) return undefined
-    if (kind === 'quarter') return { type: 'quarter', year, index: quarter }
-    if (week === undefined || selectedIsoYear === undefined) return undefined
-    return { type: 'week', year: selectedIsoYear, index: week }
-  }
-
-  const flowPeriod = flow ? periodFor(flow) : undefined
-
-  async function startFlow(kind: FlowKind) {
-    if (!userId) return
-    const period = periodFor(kind)
-    if (!period) return
-
-    try {
-      await ensureReview.mutateAsync({ userId, period })
-      setFlow(kind)
-    } catch {
-      // L'échec remonte déjà par `ensureReview.error` — l'overlay ne s'ouvre pas
-      // sur une session qui n'existe pas.
-    }
-  }
-
-  if (todayQuery.isPending || objectivesQuery.isPending) {
+  if (todayQuery.isError || !today || !year || !quarter || !currentYear) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Spinner className="text-ink-muted" />
-      </div>
+      <PageError
+        title="Impossible d’ouvrir votre rituel"
+        error={todayQuery.error ?? new Error('unavailable')}
+        onRetry={onRetry}
+        retrying={retrying}
+      />
     )
   }
 
-  if (todayQuery.isError) {
-    return (
-      <div className="flex h-full items-center justify-center px-5">
-        <ErrorState
-          title="Impossible de charger votre review"
-          description={dataErrorMessage(todayQuery.error)}
-          onRetry={handleRetry}
-          retrying={retrying}
-          className="max-w-md"
-        />
-      </div>
-    )
-  }
+  // L'état vide dit « aucun objectif », pas « aucun objectif en 2024 » : le
+  // borner à l'année en cours évite qu'un aller-retour dans le sélecteur fasse
+  // disparaître le hub — et avec lui le sélecteur qui permettrait d'en revenir.
+  if (principals.length === 0 && objectiveYear === currentYear) return <ReviewEmpty />
 
-  if (principals.length === 0 && secondaries.length === 0) {
-    return <ReviewEmpty />
-  }
+  const quarterOpening = openingsQuery.data?.get(openingKey('quarter', year, quarter))
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-5.5">
+    <div className="flex flex-col gap-4 lg:gap-4.5">
       {firstError && (
         <ErrorState
           description={dataErrorMessage(firstError)}
-          onRetry={handleRetry}
+          onRetry={onRetry}
           retrying={retrying}
         />
       )}
 
-      {ensureReview.error && (
-        <ErrorState description={dataErrorMessage(ensureReview.error)} />
-      )}
+      <RitualHub
+        year={year}
+        currentYear={currentYear}
+        quarter={quarter}
+        currentQuarter={currentQuarter}
+        weeks={weeks}
+        reviews={weekReviewsQuery.data}
+        openings={openingsQuery.data}
+        today={today}
+        currentWeek={currentWeekRef}
+        banner={banner}
+        quarterOpenAt={quarterOpening?.openAt}
+        quarterIsOpen={quarterOpening?.isOpen ?? false}
+        quarterValidatedAt={quarterReviewQuery.data?.validated_at ?? null}
+        quarterHasSubjects={quarterHasSubjects}
+        reviewable={reviewable}
+        onSelectYear={setPickedYear}
+        onSelectQuarter={setPickedQuarter}
+        onStartBanner={() => bannerWeek && openWeek(bannerWeek)}
+        onOpenWeek={openWeek}
+      />
 
-      {year && quarter && today && (
-        <ReviewHub
-          year={year}
-          currentYear={currentYear!}
-          quarter={quarter}
-          currentQuarter={currentQuarter}
-          weeks={weeks}
-          selectedWeek={week}
-          selectedMonday={selectedMonday}
-          currentWeek={currentWeek?.isoWeek}
+      {active && (
+        <RitualFlow
+          review={active.review}
+          weekStart={active.start}
+          weekNo={active.weekNo}
           today={today}
-          objectives={weekObjectives}
-          ratings={ratings}
-          ratedCount={ratedCount}
-          weekOpen={weekOpening?.isOpen ?? false}
-          quarterOpenAt={quarterOpening?.openAt}
-          quarterIsOpen={quarterOpening?.isOpen ?? false}
-          quarterDone={quarterDone}
-          onSelectYear={setSelectedYear}
-          onSelectQuarter={setSelectedQuarter}
-          onSelectWeek={setSelectedWeek}
-          onStartWeek={() => void startFlow('week')}
-          onStartQuarter={() => void startFlow('quarter')}
-        />
-      )}
-
-      {flow && flowPeriod && selectedMonday && quarter && (
-        <ReviewFlow
-          period={flowPeriod}
-          weekStart={selectedMonday}
-          weekNo={week!}
-          currentWeekNo={year === currentYear ? currentWeek?.isoWeek : undefined}
-          quarter={quarter}
-          quarterWeeks={weeks}
-          objectives={flow === 'quarter' ? quarterObjectives : weekObjectives}
-          onClose={() => setFlow(null)}
+          objectives={activeObjectives}
+          onClose={() => setActive(null)}
+          onFinish={() => void navigate('/')}
         />
       )}
     </div>

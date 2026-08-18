@@ -27,9 +27,12 @@ export function LoginPage() {
   // navigateur partagé, pas une app posée sur un écran d'accueil. Voir getRemember().
   const standalone = isStandalone()
 
-  if (status === 'signedIn') return <Navigate to="/" replace />
-
+  // Calculé avant le retour anticipé : le garde-fou de boot d'AuthProvider peut
+  // éjecter ici quelqu'un qui venait de /taches, et l'événement auth tardif le
+  // renvoie alors sur sa route d'origine plutôt que sur l'accueil.
   const from = (location.state as { from?: string } | null)?.from ?? '/'
+
+  if (status === 'signedIn') return <Navigate to={from} replace />
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()

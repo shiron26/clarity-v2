@@ -5,13 +5,13 @@
 // invalidation pour les actions ponctuelles (créer, supprimer, reporter).
 //
 // Ce que le serveur fait dans notre dos et qu'un patch local ne peut pas deviner :
-// le trigger AFTER `on_task_change` recalcule `objective_week` dès qu'une tâche
+// le trigger AFTER `on_task_change` recalcule `objective_period` dès qu'une tâche
 // **cochée et liée** change d'échéance, d'objectif, ou disparaît — d'où les
 // invalidations larges sur ces cas précis.
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
-import { queryKeys } from '../lib/queryKeys'
-import { classifyError } from '../lib/queryError'
+import { invalidateProgress, queryKeys } from '../lib/queryKeys'
+import { retryAuthTransient } from '../lib/queryError'
 import { insertView, updateView, deleteView } from '../lib/viewWrites'
 import { toRecurrenceJson, type Recurrence } from '../lib/recurrence'
 import type { IsoDate } from '../lib/appDate'
@@ -41,18 +41,25 @@ export type TaskEdits = Partial<{
   recurrence: Recurrence | null
 }>
 
-/** Les écritures idempotentes se retentent après un PGRST301 transitoire. */
-const retryAuthTransient = (failureCount: number, error: Error) =>
-  classifyError(error) === 'authTransient' && failureCount < 3
-
-/** Patch de toutes les vues de tâches en cache, avec de quoi revenir en arrière. */
+/**
+ * Patch de toutes les vues de tâches en cache, avec de quoi revenir en arrière.
+ *
+ * **Le garde `Array.isArray` n'est pas défensif, il est nécessaire.** La key
+ * `queryKeys.task.all` est un PRÉFIXE : elle couvre les listes de tâches, mais
+ * aussi `task.completedRange`, dont la donnée est un compteur `{ total, linked }`
+ * et non un tableau. C'est voulu — cocher une tâche doit rafraîchir ce compteur,
+ * il a donc sa place sous `task`. Sans ce test, `apply()` reçoit l'objet, lève un
+ * TypeError DANS `onMutate`, et la mutation échoue avant même de partir sur le
+ * réseau : l'écriture ne se fait pas et l'erreur, sans code, se lit « connexion
+ * impossible ».
+ */
 function patchCachedTasks(
   queryClient: ReturnType<typeof useQueryClient>,
   apply: (tasks: Task[]) => Task[],
 ) {
   const previous = queryClient.getQueriesData<Task[]>({ queryKey: queryKeys.task.all })
   queryClient.setQueriesData<Task[]>({ queryKey: queryKeys.task.all }, (tasks) =>
-    tasks ? apply(tasks) : tasks,
+    Array.isArray(tasks) ? apply(tasks) : tasks,
   )
   return previous
 }
@@ -138,8 +145,7 @@ export function useUpdateTask() {
     onSettled: (_data, _error, { edits }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.task.all })
       if (touchesWeeklyRecord(edits)) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.objectiveWeek.all })
-        void queryClient.invalidateQueries({ queryKey: queryKeys.objectiveActiveDays.all })
+        invalidateProgress(queryClient)
       }
     },
   })
@@ -171,8 +177,7 @@ export function useDeleteTask() {
     // Supprimer une tâche cochée et liée refait le relevé de sa semaine.
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.task.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.objectiveWeek.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.objectiveActiveDays.all })
+      invalidateProgress(queryClient)
     },
   })
 }
@@ -233,21 +238,44 @@ export function useReorderTasks() {
  * jamais sans que les autres membres le sachent.
  */
 export function usePostponeOverdue() {
+  return useOverdueBulk('postpone_overdue_tasks')
+}
+
+/**
+ * L'autre sortie d'une pile de retards : leur **retirer leur date**, au lieu de
+ * les repousser d'un jour.
+ *
+ * Reporter à aujourd'hui suppose qu'on va s'en occuper aujourd'hui. Une pile de
+ * retards contient surtout des choses qu'on fera « un jour » : les pousser d'un
+ * jour recrée le même retard demain. Sans date, elles rejoignent la vue
+ * « Sans date » et cessent de compter comme du retard.
+ *
+ * Même RPC jumelle côté serveur, mêmes garde-fous (personnelles, non cochées).
+ */
+export function useUndateOverdue() {
+  return useOverdueBulk('undate_overdue_tasks')
+}
+
+/**
+ * Les deux actions groupées ne diffèrent que par le nom du RPC : même retry,
+ * mêmes invalidations. Une tâche qui sort du retard change le compte des vues
+ * ET peut porter un objectif, d'où `invalidateProgress`.
+ */
+function useOverdueBulk(rpc: 'postpone_overdue_tasks' | 'undate_overdue_tasks') {
   const queryClient = useQueryClient()
 
   return useMutation({
     retry: retryAuthTransient,
 
     mutationFn: async (): Promise<number> => {
-      const { data, error } = await supabase.rpc('postpone_overdue_tasks')
+      const { data, error } = await supabase.rpc(rpc)
       if (error) throw error
       return data ?? 0
     },
 
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.task.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.objectiveWeek.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.objectiveActiveDays.all })
+      invalidateProgress(queryClient)
     },
   })
 }

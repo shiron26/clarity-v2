@@ -1,5 +1,6 @@
 import { forwardRef, type ReactNode } from 'react'
 import { cn } from '../../lib/cn'
+import { DEFAULT_LIST_COLOR } from '../../lib/listPalette'
 
 type ListPillProps = {
   /** Nom de la liste. Ignoré en variante `dashed` (l'invite prime). */
@@ -47,7 +48,7 @@ export const ListPill = forwardRef<HTMLButtonElement, ListPillProps>(function Li
         <span
           aria-hidden
           className={cn('shrink-0 rounded-full', DOT[size])}
-          style={{ backgroundColor: color ?? '#9a9aa6' }}
+          style={{ backgroundColor: color ?? DEFAULT_LIST_COLOR }}
         />
       )}
       {/* Le nom se tronque plutôt que d'imposer sa largeur : sans borne, une
@@ -81,7 +82,7 @@ export const ListPill = forwardRef<HTMLButtonElement, ListPillProps>(function Li
         base,
         'relative cursor-pointer transition-colors duration-150',
         // La pastille pleine (`md`) n'a pas de bordure : son survol passe par le fond.
-        (dashed || size === 'sm') && 'hover:border-[#a9beff]',
+        (dashed || size === 'sm') && 'hover:border-border-primary-soft',
         dashed && 'hover:text-primary',
         'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
       )}

@@ -2,19 +2,15 @@
 // update, avec rollback en onError.
 //
 // La complétion déclenche côté serveur deux effets qu'un patch local ne peut pas
-// deviner : le rafraîchissement du relevé hebdomadaire (objective_week) et, si la
+// deviner : le rafraîchissement du relevé hebdomadaire (objective_period) et, si la
 // tâche est récurrente, la création de l'occurrence suivante. D'où l'invalidation
 // large en onSettled, en plus du patch optimiste.
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { queryKeys } from '../lib/queryKeys'
-import { classifyError } from '../lib/queryError'
-import { updateView } from '../lib/viewWrites'
+import { invalidateProgress, queryKeys } from '../lib/queryKeys'
+import { retryAuthTransient } from '../lib/queryError'
+import { TIMESTAMP_SIGNAL, updateView } from '../lib/viewWrites'
 import type { Task } from './useTasks'
 
-// PostgREST exige un timestamptz valide ; le trigger l'écrase par `now()`.
-// Une constante figée plutôt que `new Date()`, pour qu'aucune lecture du code
-// ne laisse croire que l'horloge du navigateur compte.
-const COMPLETION_SIGNAL = '1970-01-01T00:00:00.000Z'
 
 export function useToggleTask() {
   const queryClient = useQueryClient()
@@ -24,7 +20,7 @@ export function useToggleTask() {
     // elle peut être retentée sans risque de doublon, contrairement au défaut
     // des mutations. Couvre le 401 PGRST301 transitoire des premières secondes
     // suivant une connexion — voir src/lib/queryError.ts.
-    retry: (failureCount, error) => classifyError(error) === 'authTransient' && failureCount < 3,
+    retry: retryAuthTransient,
 
     mutationFn: async ({ id, completed }: { id: string; completed: boolean }) => {
       // completed_by est imposé par le trigger — ViewPatch ne le propose même pas.
@@ -32,7 +28,7 @@ export function useToggleTask() {
       // que comme un signal booléen (null / non-null), le serveur pose
       // l'estampille avec sa propre horloge. Ne pas la croire au retour.
       const { error } = await updateView('task', {
-        completed_at: completed ? COMPLETION_SIGNAL : null,
+        completed_at: completed ? TIMESTAMP_SIGNAL : null,
       }).eq('id', id)
       if (error) throw error
     },
@@ -43,10 +39,19 @@ export function useToggleTask() {
 
       // Patch purement local, remplacé par la valeur serveur à l'invalidation :
       // l'UI ne teste que la nullité de `completed_at`, jamais sa valeur.
+      //
+      // `Array.isArray` et non `tasks?.` : la key est un PRÉFIXE, elle couvre
+      // aussi `task.completedRange`, dont la donnée est un compteur
+      // `{ total, linked }`. Un `.map` dessus lèverait un TypeError dans
+      // `onMutate` et ferait échouer la coche avant tout appel réseau.
       queryClient.setQueriesData<Task[]>({ queryKey: queryKeys.task.all }, (tasks) =>
-        tasks?.map((t) =>
-          t.id === id ? { ...t, completed_at: completed ? new Date().toISOString() : null } : t,
-        ),
+        Array.isArray(tasks)
+          ? tasks.map((t) =>
+              t.id === id
+                ? { ...t, completed_at: completed ? new Date().toISOString() : null }
+                : t,
+            )
+          : tasks,
       )
 
       return { previous }
@@ -60,8 +65,7 @@ export function useToggleTask() {
 
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.task.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.objectiveWeek.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.objectiveActiveDays.all })
+      invalidateProgress(queryClient)
     },
   })
 }

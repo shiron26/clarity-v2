@@ -5,8 +5,8 @@
 // reste dans son trimestre ; pour le poursuivre, on le réécrit ailleurs »).
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '../lib/queryKeys'
-import { classifyError } from '../lib/queryError'
-import { deleteView, insertView, updateView } from '../lib/viewWrites'
+import { retryAuthTransient } from '../lib/queryError'
+import { TIMESTAMP_SIGNAL, deleteView, insertView, updateView } from '../lib/viewWrites'
 import type { Milestone } from './useMilestones'
 
 export function useCreateMilestone() {
@@ -35,9 +35,43 @@ export function useCreateMilestone() {
   })
 }
 
-// Signal booléen : le serveur pose l'estampille avec sa propre horloge
-// (migration 0013). La valeur envoyée ici n'est jamais conservée.
-const COMPLETION_SIGNAL = '1970-01-01T00:00:00.000Z'
+/**
+ * Les jalons posés d'un coup, à la création d'un objectif jalonné (REFONTE §2).
+ *
+ * Une seule écriture plutôt que quatre : le cap serveur `milestone_cap` compte
+ * les lignes déjà présentes, et quatre insertions successives laisseraient une
+ * fenêtre où une erreur réseau abandonne un objectif à moitié jalonné.
+ * `position` suit l'ordre de saisie.
+ */
+export function useCreateMilestones() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: {
+      objectiveId: string
+      year: number
+      quarter: number
+      titles: string[]
+    }) => {
+      if (input.titles.length === 0) return
+      const { error } = await insertView(
+        'milestone',
+        input.titles.map((title, position) => ({
+          objective_id: input.objectiveId,
+          year: input.year,
+          quarter: input.quarter,
+          title,
+          position,
+        })),
+      )
+      if (error) throw error
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.milestone.all })
+    },
+  })
+}
+
 
 /**
  * Cocher un jalon ne produit aucun signal ailleurs — ni jour actif, ni
@@ -50,11 +84,11 @@ export function useToggleMilestone() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    retry: (failureCount, error) => classifyError(error) === 'authTransient' && failureCount < 3,
+    retry: retryAuthTransient,
 
     mutationFn: async ({ id, completed }: { id: string; completed: boolean }) => {
       const { error } = await updateView('milestone', {
-        completed_at: completed ? COMPLETION_SIGNAL : null,
+        completed_at: completed ? TIMESTAMP_SIGNAL : null,
       }).eq('id', id)
       if (error) throw error
     },

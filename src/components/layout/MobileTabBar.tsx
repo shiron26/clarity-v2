@@ -2,13 +2,15 @@ import { NavLink } from 'react-router'
 import { useNewTask } from '../../hooks/useNewTask'
 import { cn } from '../../lib/cn'
 import { PlusIcon } from '../icons/PlusIcon'
-import { NAV_ITEMS } from './navItems'
+import { MOBILE_NAV_ITEMS, type NavItem } from './navItems'
+
+// Le FAB coupe la barre en son milieu : deux onglets, l'action, deux onglets.
+const SPLIT = 2
 
 export function MobileTabBar() {
-  const [dashboard, tasks, objectives, review] = NAV_ITEMS
   const { openNewTask } = useNewTask()
 
-  const tab = ({ to, label, Icon }: (typeof NAV_ITEMS)[number]) => (
+  const tab = ({ to, label, Icon }: NavItem) => (
     <NavLink
       key={to}
       to={to}
@@ -36,8 +38,7 @@ export function MobileTabBar() {
       className="shrink-0 border-t border-border bg-surface-sidebar px-2.5 pt-2.5 pb-[max(1.25rem,env(safe-area-inset-bottom))] lg:hidden"
     >
       <div className="grid grid-cols-[1fr_1fr_60px_1fr_1fr] items-center">
-        {tab(dashboard!)}
-        {tab(tasks!)}
+        {MOBILE_NAV_ITEMS.slice(0, SPLIT).map(tab)}
         {/* Une action, pas une navigation : la modale s'ouvre par-dessus l'écran
             courant, comme le raccourci « N ». La barre reste découplée de
             `features/tasks/` — elle passe par le hook transverse. */}
@@ -49,8 +50,7 @@ export function MobileTabBar() {
         >
           <PlusIcon className="size-6" />
         </button>
-        {tab(objectives!)}
-        {tab(review!)}
+        {MOBILE_NAV_ITEMS.slice(SPLIT).map(tab)}
       </div>
     </nav>
   )

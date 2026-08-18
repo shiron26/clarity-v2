@@ -6,12 +6,9 @@
 // espace (SPEC §3).
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '../lib/queryKeys'
-import { classifyError } from '../lib/queryError'
+import { retryAuthTransient } from '../lib/queryError'
 import { deleteView, insertView, updateView } from '../lib/viewWrites'
 import type { List } from './useLists'
-
-const retryAuthTransient = (failureCount: number, error: Error) =>
-  classifyError(error) === 'authTransient' && failureCount < 3
 
 export function useCreateList() {
   const queryClient = useQueryClient()

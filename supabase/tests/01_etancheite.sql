@@ -28,6 +28,8 @@ insert into public.space (name) values ('espace de A');
 do $$
 declare
   v_space uuid;
+  v_obj uuid;
+  v_habit uuid;
   v_count int;
   v_title text;
 begin
@@ -35,6 +37,25 @@ begin
 
   -- Tâche d'espace créée par A
   insert into public.task (space_id, title) values (v_space, 'tâche partagée');
+
+  -- Objectif quantifié de A et une saisie. objective_entry est une table EN
+  -- CLAIR (pas de vue déchiffrante) : son étanchéité repose entièrement sur ses
+  -- policies RLS, pas sur le chiffrement — d'où sa place dans ce fichier.
+  insert into public.objective (user_id, year, kind, label, title,
+                                measure, period_unit, target_value, unit, entry_mode, direction)
+  values ('00000000-0000-0000-0000-00000000000a', extract(year from private.today())::int,
+          'principal', 'EPARGNE', 'Épargner', 'quantite', 'month', 6000, '€', 'cumul', 'atteindre')
+  returning id into v_obj;
+  insert into public.objective_entry (objective_id, value) values (v_obj, 400);
+
+  -- Habitude de A et une séance. Même situation qu'objective_entry : table en
+  -- clair, étanchéité portée par les seules policies RLS (REFONTE §7).
+  insert into public.objective (user_id, year, kind, label, title,
+                                measure, period_unit, cadence)
+  values ('00000000-0000-0000-0000-00000000000a', extract(year from private.today())::int,
+          'principal', 'COURIR', 'Courir', 'habitude', 'week', 3)
+  returning id into v_habit;
+  insert into public.objective_session (objective_id, day) values (v_habit, private.today());
 
   -- =========================================================================
   -- 1. Le rôle authenticated ne peut RIEN lire dans private, ni la clé
@@ -80,6 +101,20 @@ begin
     raise exception 'FAIL: A devrait voir 1 espace, en voit %', v_count;
   end if;
 
+  select count(*) into v_count from public.objective_entry;
+  if v_count = 1 then
+    raise notice 'OK: A lit sa saisie quantifiée';
+  else
+    raise exception 'FAIL: A voit % saisie(s)', v_count;
+  end if;
+
+  select count(*) into v_count from public.objective_session;
+  if v_count = 1 then
+    raise notice 'OK: A lit sa séance';
+  else
+    raise exception 'FAIL: A voit % séance(s)', v_count;
+  end if;
+
   -- =========================================================================
   -- 3. B ne voit RIEN de A (ni tâche perso, ni espace, ni tâche d'espace)
   -- =========================================================================
@@ -99,6 +134,35 @@ begin
   else
     raise exception 'FAIL: B voit l''espace de A';
   end if;
+
+  select count(*) into v_count from public.objective_entry;
+  if v_count = 0 then
+    raise notice 'OK: B ne voit aucune saisie de A';
+  else
+    raise exception 'FAIL: B voit % saisie(s) de A', v_count;
+  end if;
+
+  begin
+    insert into public.objective_entry (objective_id, value) values (v_obj, 999);
+    raise exception 'FAIL: B a écrit une saisie sur l''objectif de A';
+  exception when insufficient_privilege then
+    raise notice 'OK: B ne peut pas saisir sur l''objectif de A';
+  end;
+
+  select count(*) into v_count from public.objective_session;
+  if v_count = 0 then
+    raise notice 'OK: B ne voit aucune séance de A';
+  else
+    raise exception 'FAIL: B voit % séance(s) de A', v_count;
+  end if;
+
+  begin
+    insert into public.objective_session (objective_id, day)
+    values (v_habit, private.today());
+    raise exception 'FAIL: B a créé une séance sur l''objectif de A';
+  exception when insufficient_privilege then
+    raise notice 'OK: B ne peut pas créer de séance sur l''objectif de A';
+  end;
 
   begin
     insert into public.task (user_id, title)

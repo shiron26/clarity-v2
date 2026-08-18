@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryKeys'
 import { useAuth } from '../features/auth/useAuth'
 import type { IsoDate } from '../lib/appDate'
+import { sessionKey } from '../lib/objectiveState'
 
 export function useObjectiveActiveDays(
   objectiveIds: string[],
@@ -25,8 +26,8 @@ export function useObjectiveActiveDays(
         p_to: to!,
       })
       if (error) throw error
-      // Clé `objectif|jour` : la heatmap n'a besoin que d'un test d'appartenance.
-      return new Set(data.map((row) => `${row.objective_id}|${row.day}`))
+      // La heatmap n'a besoin que d'un test d'appartenance.
+      return new Set(data.map((row) => sessionKey(row.objective_id, row.day)))
     },
   })
 }

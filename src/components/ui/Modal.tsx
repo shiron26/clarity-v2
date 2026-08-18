@@ -32,8 +32,19 @@ type ModalProps = {
    * En desktop les deux se ressemblent : panneau ancré en haut.
    */
   variant?: 'panel' | 'sheet'
+  /**
+   * `app` (défaut) : au-dessus de l'application, sous les cérémonies.
+   * `ceremony` : au-dessus d'un `RitualOverlay` (`z-60`) — le bilan ouvre le
+   * wizard de création par-dessus son deck (REFONTE §8, écran 4). Sans ça la
+   * modale s'ouvrirait *derrière* la cérémonie, invisible et pourtant focalisée.
+   */
+  elevation?: 'app' | 'ceremony'
   className?: string
-  /** Surcharge du voile — sert à ajuster l'ancrage vertical du panneau. */
+  /**
+   * Surcharge du conteneur plein écran — sert à ajuster l'ancrage vertical du
+   * panneau. Le voile lui-même est une couche interne : sa couleur ne se
+   * surcharge pas d'ici.
+   */
   scrimClassName?: string
   /**
    * Reçoit la fermeture animée. Les modales montées avec `open` en dur et qui se
@@ -55,6 +66,7 @@ export function Modal({
   children,
   footer,
   variant = 'panel',
+  elevation = 'app',
   className,
   scrimClassName,
   closeRef,
@@ -130,14 +142,21 @@ export function Modal({
 
   // Le verrou de défilement suit la présence à l'écran, pas `open` : sans ça la
   // page reprendrait sa main derrière une feuille encore en train de descendre.
+  //
+  // Il dépend d'un BOOLÉEN et non de `closing` lui-même : `closing` change de
+  // valeur (`null` → `'self'`) à l'instant où la sortie démarre, et l'effet se
+  // rejouait alors pour rien — `overflow` restauré puis reposé, deux
+  // invalidations de style de tout le document sur la première image de
+  // l'animation, pour un état final identique.
+  const present = open || closing !== null
   useEffect(() => {
-    if (!open && !closing) return
+    if (!present) return
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = previousOverflow
     }
-  }, [open, closing])
+  }, [present])
 
   useEffect(() => {
     if (!open) return
@@ -151,7 +170,10 @@ export function Modal({
       // Piège à focus minimal : la modale ne doit pas laisser filer le focus
       // derrière le scrim.
       const focusables = panelRef.current?.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        // `:not([disabled])` : un contrôle désactivé n'est pas focalisable, et
+        // le compter ferait boucler le piège à focus sur lui sans que rien ne
+        // bouge — visible dès qu'une réponse indisponible ouvre un panneau.
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
       )
       if (!focusables?.length) return
       const first = focusables[0]!
@@ -184,12 +206,26 @@ export function Modal({
   return (
     <div
       className={cn(
-        'fixed inset-0 z-50 flex items-end justify-center bg-[rgb(16_17_22/0.45)] sm:items-start sm:pt-30',
-        closing ? 'animate-scrim-out' : 'animate-fade-in',
+        'fixed inset-0 flex items-end justify-center sm:items-start sm:pt-30',
+        elevation === 'ceremony' ? 'z-70' : 'z-50',
         scrimClassName,
       )}
       onClick={requestClose}
     >
+      {/* Le voile est une couche à lui, derrière le panneau, et non plus son
+          parent : c'est ce qui lui permet de s'effacer en `opacity` sans
+          emporter le panneau dans son fondu. Tant qu'il était le parent, sa
+          sortie devait passer par `background-color`, donc par un repeint plein
+          écran à chaque image — d'où une fermeture qui saccadait alors que
+          l'ouverture, elle, animait bien une opacité. */}
+      <div
+        aria-hidden
+        className={cn(
+          'absolute inset-0 bg-[rgb(16_17_22/0.45)]',
+          closing ? 'animate-scrim-out' : 'animate-fade-in',
+        )}
+      />
+
       <div
         ref={panelRef}
         role="dialog"
@@ -201,7 +237,9 @@ export function Modal({
           // sous l'indicateur d'accueil en app installée (et en variant `sheet` le
           // dernier champ deviendrait inatteignable). `sm:pb-6` rétablit la valeur
           // normale dès que le panneau décolle du bord.
-          'w-full rounded-t-3xl bg-surface p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-modal',
+          // `relative` : un frère absolu peint au-dessus d'un élément non
+          // positionné, donc sans ça le voile passerait devant le panneau.
+          'relative w-full rounded-t-3xl bg-surface p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-modal',
           'sm:w-[480px] sm:max-h-[86vh] sm:overflow-y-auto sm:rounded-2xl sm:pb-6',
           variant === 'sheet'
             ? // Feuille pleine hauteur en mobile ; le panneau desktop reprend
@@ -221,7 +259,9 @@ export function Modal({
               : 'animate-slide-up',
           // Plus rien à cliquer une fois la descente lancée : un second appui
           // n'a aucun effet utile et déclencherait le focus d'un champ qui part.
-          closing && 'pointer-events-none',
+          // `will-change` aide le compositeur là où ça compte, sans laisser une
+          // couche permanente sous un panneau défilant.
+          closing && 'pointer-events-none will-change-transform',
           className,
         )}
       >

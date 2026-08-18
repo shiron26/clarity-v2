@@ -8,8 +8,18 @@ export type MenuItem = {
   /** Pastille de couleur ou glyphe posé avant le libellé. */
   leading?: ReactNode
   selected?: boolean
+  /** `danger` teinte l'entrée en rouge — réservé à ce qui détruit. */
+  tone?: 'default' | 'danger'
   onSelect: () => void
 }
+
+/**
+ * Deux sémantiques, et il faut choisir la bonne : un menu qui **désigne une
+ * valeur** (la liste d'une tâche, un tri) est une liste de boutons radio ; un
+ * menu qui **déclenche une action** (Modifier, Supprimer) n'en est pas une, et
+ * annoncer « coché / non coché » sur « Supprimer » n'a aucun sens.
+ */
+export type MenuVariant = 'selection' | 'actions'
 
 type MenuProps = {
   open: boolean
@@ -17,6 +27,7 @@ type MenuProps = {
   items: MenuItem[]
   /** Libellé du menu pour les lecteurs d'écran (« Choisir une liste »…). */
   label: string
+  variant?: MenuVariant
   /** Bord sur lequel le panneau s'aligne. La maquette aligne tout à droite. */
   align?: 'left' | 'right'
   /** Décalage vertical depuis le haut du déclencheur (30 px sur une pastille). */
@@ -25,6 +36,11 @@ type MenuProps = {
   triggerRef?: RefObject<HTMLElement | null>
   className?: string
 }
+
+// Un seul sélecteur pour les deux variantes : la navigation clavier n'a pas à
+// savoir laquelle est en cours, et l'oublier quelque part rendrait le menu
+// muet aux flèches sans erreur de compilation.
+const ITEM_SELECTOR = '[role="menuitemradio"],[role="menuitem"]'
 
 /**
  * Menu déroulant du design system (DESIGN.md « Dropdown menu »). Il se positionne
@@ -39,6 +55,7 @@ export function Menu({
   onClose,
   items,
   label,
+  variant = 'selection',
   align = 'right',
   offset = 30,
   triggerRef,
@@ -51,7 +68,7 @@ export function Menu({
   // focus au début à chaque frappe de flèche.
   useEffect(() => {
     if (!open) return
-    const options = panelRef.current?.querySelectorAll<HTMLElement>('[role="menuitemradio"]')
+    const options = panelRef.current?.querySelectorAll<HTMLElement>(ITEM_SELECTOR)
     if (!options?.length) return
     const selected = Array.prototype.findIndex.call(
       options,
@@ -71,7 +88,7 @@ export function Menu({
     }
 
     function onKeyDown(event: KeyboardEvent) {
-      const options = panelRef.current?.querySelectorAll<HTMLElement>('[role="menuitemradio"]')
+      const options = panelRef.current?.querySelectorAll<HTMLElement>(ITEM_SELECTOR)
       if (!options?.length) return
       const current = document.activeElement as HTMLElement | null
       const index = Array.prototype.indexOf.call(options, current)
@@ -126,23 +143,28 @@ export function Menu({
         <button
           key={item.id}
           type="button"
-          role="menuitemradio"
-          aria-checked={!!item.selected}
+          role={variant === 'actions' ? 'menuitem' : 'menuitemradio'}
+          aria-checked={variant === 'actions' ? undefined : !!item.selected}
           onClick={(event) => {
             event.stopPropagation()
             item.onSelect()
             onClose()
           }}
           className={cn(
-            'flex w-full cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-left text-body font-normal whitespace-nowrap text-ink-2',
-            'transition-colors duration-150 hover:bg-canvas focus-visible:bg-canvas focus-visible:outline-none',
+            'flex w-full cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-left text-body font-normal whitespace-nowrap',
+            'transition-colors duration-150 focus-visible:outline-none',
+            item.tone === 'danger'
+              ? 'text-danger hover:bg-danger-bg focus-visible:bg-danger-bg'
+              : 'text-ink-2 hover:bg-canvas focus-visible:bg-canvas',
           )}
         >
           {item.leading}
           <span className="flex-1">{item.label}</span>
-          <span aria-hidden className="text-caption text-primary">
-            {item.selected ? '✓' : ''}
-          </span>
+          {variant === 'selection' && (
+            <span aria-hidden className="text-caption text-primary">
+              {item.selected ? '✓' : ''}
+            </span>
+          )}
         </button>
       ))}
     </div>

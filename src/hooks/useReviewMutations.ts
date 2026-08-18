@@ -8,15 +8,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryKeys'
-import { insertView, updateView } from '../lib/viewWrites'
-import type { PeriodRef, Review } from './useReview'
+import { TIMESTAMP_SIGNAL, insertView, updateView } from '../lib/viewWrites'
+import type { PeriodRef, Review, ReviewItem } from './useReview'
 
 const REVIEW_COLUMNS = 'id, period_type, period_year, period_index, validated_at, created_by'
 
-// PostgREST exige un timestamptz valide ; le trigger l'écrase par `now()`
-// (migration review_openings). Comme pour `closed_at`, la valeur envoyée n'est
-// qu'un signal booléen — l'horloge du navigateur n'a pas voix au chapitre.
-const VALIDATION_SIGNAL = '1970-01-01T00:00:00.000Z'
 
 async function selectReview(userId: string, period: PeriodRef): Promise<Review | null> {
   let query = supabase
@@ -95,15 +91,31 @@ export type RateObjectiveInput = {
    * fusée) : envoyer les deux champs à chaque fois ferait écraser la valeur
    * fraîche par celle, périmée, du cache. Le trigger INSTEAD OF conserve les
    * colonnes absentes du SET, elles ne partent donc pas à null.
+   *
+   * **Une exception, et elle vient de là.** `rating` et `achieved` s'excluent sur
+   * une même ligne (`review_item_verdict_exclusive`), et comme `new` porte les
+   * valeurs anciennes des colonnes hors SET, poser l'un sans effacer l'autre
+   * lèverait la règle. Basculer d'une forme à l'autre exige donc d'envoyer les
+   * **deux** champs — d'où `verdictPatch()` / `ratingPatch()` ci-dessous.
    */
-  patch: { rating?: number | null; comment?: string | null }
+  patch: { rating?: number | null; achieved?: boolean | null; comment?: string | null }
+}
+
+/** Le verdict, et la note effacée avec — les deux ne cohabitent pas. */
+function verdictPatch(achieved: boolean | null): RateObjectiveInput['patch'] {
+  return { achieved, rating: null }
+}
+
+/** La note, et le verdict effacé avec. Symétrique de `verdictPatch`. */
+function ratingPatch(rating: number | null): RateObjectiveInput['patch'] {
+  return { rating, achieved: null }
 }
 
 /**
- * Pose (ou corrige) la note d'un objectif dans une session.
+ * Pose (ou corrige) le jugement porté sur un objectif dans une session.
  *
- * `achieved` reste absent : il n'existe qu'au bilan annuel, et l'envoyer sur une
- * semaine ou un trimestre lève `review_item_achieved_year_only`.
+ * Semaine : la note seule. Année : le verdict seul. Trimestre : l'un **ou**
+ * l'autre selon que la fenêtre de l'objectif se poursuit ou se ferme (REFONTE §8).
  *
  * Pas d'`upsert` PostgREST : la cible est une vue à trigger INSTEAD OF, le
  * `ON CONFLICT` n'y a aucune contrainte à viser. On choisit donc explicitement
@@ -161,14 +173,46 @@ export function useValidateReview() {
 
   return useMutation({
     mutationFn: async (reviewId: string) => {
+      // `.select().single()` et non un `update` nu : sans lui, un UPDATE qui ne
+      // touche AUCUNE ligne (id inconnu, RLS qui refuse) renvoie 204 et passe pour
+      // un succès. La cérémonie se déclarait alors terminée sans l'être, et son
+      // encart revenait indéfiniment. `single()` lève un PGRST116 sur zéro ligne.
       const { error } = await supabase
         .from('review')
-        .update({ validated_at: VALIDATION_SIGNAL })
+        .update({ validated_at: TIMESTAMP_SIGNAL })
         .eq('id', reviewId)
+        .select('id')
+        .single()
       if (error) throw error
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.review.all })
     },
   })
+}
+
+/**
+ * Les trois écritures d'un bilan, prêtes à passer aux decks : noter, trancher,
+ * commenter.
+ *
+ * Le bilan de trimestre et celui d'année les écrivaient à l'identique — même
+ * résolution de l'`itemId` depuis la table des items, trois fois chacun. La
+ * règle « un item par (review, objectif), créé à la première écriture » ne se
+ * restate plus d'un flow à l'autre.
+ */
+export function useReviewItemWriter(
+  reviewId: string,
+  items: Map<string, ReviewItem> | undefined,
+) {
+  const rateObjective = useRateObjective()
+
+  const write = (objectiveId: string, patch: RateObjectiveInput['patch']) =>
+    rateObjective.mutate({ reviewId, objectiveId, itemId: items?.get(objectiveId)?.id, patch })
+
+  return {
+    rate: (objectiveId: string, rating: number | null) => write(objectiveId, ratingPatch(rating)),
+    verdict: (objectiveId: string, achieved: boolean) => write(objectiveId, verdictPatch(achieved)),
+    comment: (objectiveId: string, text: string | null) => write(objectiveId, { comment: text }),
+    error: rateObjective.error,
+  }
 }

@@ -4,42 +4,65 @@
 // et la feuille mobile affichent des compteurs pour toutes les vues, et la
 // recherche porte sur l'ensemble — cinq requêtes filtrées re-téléchargeraient les
 // mêmes lignes et pourraient se contredire pendant une invalidation.
-import { addDays, endOfWeek, type IsoDate } from '../../lib/appDate'
+import { endOfWeek, type IsoDate } from '../../lib/appDate'
 import type { Task } from '../../hooks/useTasks'
 
-/** Les portées de la maquette. « Demain » n'a pas d'entrée de navigation : on y
- *  accède par la bascule de l'en-tête de la carte, en vue jour. « En retard »
- *  n'en est pas une non plus — le retard vit dans sa propre section. */
 /**
- * Compartiment de date des vues multi-jours : les tâches datées, groupées par
- * jour, ou celles qui n'ont pas d'échéance. Un filtre d'écran, jamais persisté.
+ * Les quatre vues de la maquette (REFONTE §5). « En retard » n'en est pas une :
+ * le retard vit dans sa propre section, présente dans toutes les vues qui
+ * regardent une date.
+ *
+ * La liste n'est **pas** une cinquième vue : c'est un filtre orthogonal, qui se
+ * combine avec la vue au lieu de la remplacer (`?vue=semaine&liste=<uuid>`).
+ * Les quatre onglets sont le seul endroit où l'on choisit la portée : dans une
+ * liste, ils doivent filtrer dedans, pas en sortir.
+ *
+ * « Sans date » est le **pool** : ce qu'on a capturé sans rien promettre. C'est
+ * la contrepartie du principe « capturer n'est pas planifier » — une tâche non
+ * datée crédite le jour où on la coche, la progression n'exige aucune
+ * planification.
  */
-export type DateBucket = 'dated' | 'undated'
+export type TaskScope = 'today' | 'week' | 'undated' | 'all'
 
-export type TaskScope = 'today' | 'tomorrow' | 'week' | 'all' | 'list'
-
-export const SCOPE_TITLES: Record<Exclude<TaskScope, 'list'>, string> = {
+export const SCOPE_TITLES: Record<TaskScope, string> = {
   today: 'Aujourd’hui',
-  tomorrow: 'Demain',
   week: 'Cette semaine',
+  undated: 'Sans date',
   all: 'Toutes les tâches',
 }
 
-export const SCOPE_NAV_LABELS: Record<Exclude<TaskScope, 'list'>, string> = {
+export const SCOPE_NAV_LABELS: Record<TaskScope, string> = {
   today: 'Aujourd’hui',
-  tomorrow: 'Demain',
   week: 'Cette semaine',
+  undated: 'Sans date',
   all: 'Toutes',
 }
 
+/** Libellés du sélecteur mobile, plus courts que la navigation (maquette). */
+export const SCOPE_SEGMENT_LABELS: Record<TaskScope, string> = {
+  today: 'Aujourd’hui',
+  week: 'Semaine',
+  undated: 'Sans date',
+  all: 'Toutes',
+}
+
+/** L'ordre des vues à l'écran. */
+export const SCOPE_ORDER: TaskScope[] = ['today', 'week', 'undated', 'all']
+
+/** Ce que le sélecteur mobile montre : trois vues, pas quatre. Sur 390 px, une
+ *  quatrième pastille tomberait à deux lettres — « Toutes » et les listes
+ *  restent dans la feuille de vues (maquette). */
+export const MOBILE_SCOPE_ORDER: TaskScope[] = ['today', 'week', 'undated']
+
 /**
- * Vue « jour » : une seule date à l'écran. C'est ce qui distingue les deux
- * régimes d'affichage de la liste — une vue jour est une liste plate qu'on peut
- * réordonner à la main, une vue multi-jours est groupée par échéance (l'ordre y
- * est imposé par la date) et porte la section repliable « Sans date ».
+ * Une liste plate, réordonnable à la main : aucune échéance n'y impose déjà un
+ * ordre. « Aujourd'hui » n'a qu'une date, « Sans date » n'en a aucune.
+ *
+ * Les autres vues groupent par échéance sous un en-tête de jour — y glisser une
+ * ligne d'un jour vers un autre la ramènerait aussitôt dans son groupe.
  */
-export function isDayScope(scope: TaskScope): boolean {
-  return scope === 'today' || scope === 'tomorrow'
+export function isFlatScope(scope: TaskScope): boolean {
+  return scope === 'today' || scope === 'undated'
 }
 
 /**
@@ -50,10 +73,16 @@ export function isPastDue(task: Task, today: IsoDate): boolean {
   return task.due_date !== null && task.due_date < today
 }
 
+/** La liste sélectionnée, quand il y en a une, restreint toutes les vues. */
+export function matchesList(task: Task, listId?: string | null): boolean {
+  return !listId || task.list_id === listId
+}
+
 /**
- * Portée d'une vue (SPEC §5). Le retard en est **exclu** : il a sa propre
- * section, dans toutes les vues — sans quoi « Aujourd'hui » listerait aussi
- * toutes les tâches cochées des mois précédents.
+ * Portée d'une vue (SPEC §5), restreinte à la liste ouverte s'il y en a une. Le
+ * retard en est **exclu** : il a sa propre section, dans toutes les vues — sans
+ * quoi « Aujourd'hui » listerait aussi toutes les tâches cochées des mois
+ * précédents.
  */
 export function matchesScope(
   task: Task,
@@ -61,35 +90,34 @@ export function matchesScope(
   options: { today: IsoDate; listId?: string | null },
 ): boolean {
   const { today, listId } = options
+  if (!matchesList(task, listId)) return false
   switch (scope) {
     case 'today':
       return task.due_date === today
-    case 'tomorrow':
-      return task.due_date === addDays(today, 1)
     case 'week':
       // Fenêtre qui rétrécit au fil de la semaine : d'aujourd'hui à dimanche.
       return task.due_date !== null && task.due_date >= today && task.due_date <= endOfWeek(today)
-    case 'list':
-      return !!listId && task.list_id === listId
+    case 'undated':
+      return task.due_date === null
     case 'all':
       return true
   }
 }
 
 /**
- * Bloc « en retard », commun à toutes les vues **sauf « Demain »** : cette vue
- * regarde devant, y afficher du retard n'aurait pas de sens (maquette). Il n'est
- * borné que par la liste quand on regarde une liste : le retard d'une autre
- * liste n'y a rien à faire.
+ * Bloc « en retard », commun à toutes les vues **sauf « Sans date »** : une
+ * tâche en retard porte une échéance, elle n'appartient donc pas au pool. Il
+ * n'est borné que par la liste quand on regarde une liste : le retard d'une
+ * autre liste n'y a rien à faire.
  */
 export function inOverdueScope(
   task: Task,
   scope: TaskScope,
   options: { today: IsoDate; listId?: string | null },
 ): boolean {
-  if (scope === 'tomorrow') return false
+  if (scope === 'undated') return false
   if (!isPastDue(task, options.today)) return false
-  return scope === 'list' ? task.list_id === options.listId : true
+  return matchesList(task, options.listId)
 }
 
 /**
@@ -106,7 +134,8 @@ export function pendingCount(
   return tasks.filter(
     (t) =>
       t.completed_at === null &&
-      (matchesScope(t, scope, options) || (withOverdue && isPastDue(t, options.today))),
+      (matchesScope(t, scope, options) ||
+        (withOverdue && isPastDue(t, options.today) && matchesList(t, options.listId))),
   ).length
 }
 
@@ -115,7 +144,7 @@ export function pendingCount(
  * chiffrés en base — et sur les tâches actives uniquement). Insensible à la
  * casse et aux accents.
  */
-export function normalizeForSearch(value: string): string {
+function normalizeForSearch(value: string): string {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')

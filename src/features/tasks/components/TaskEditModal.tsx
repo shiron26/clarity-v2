@@ -32,6 +32,7 @@ import {
   importantButtonClass,
 } from './taskSheet'
 import { ToolbarToggle } from './ToolbarToggle'
+import { buttonClasses } from '../../../components/ui/buttonClasses'
 
 type TaskEditModalProps = {
   /** `null` = fermée. */
@@ -73,6 +74,12 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
   const interval = intervalOf(rule)
   const weekdays = rule?.weekdays ?? []
 
+  // Sur l'IDENTITÉ de la tâche, pas sur l'objet : le cache en rend un nouveau à
+  // chaque invalidation, et l'effet se rejouait alors — cinq `setState` par
+  // aller-retour serveur, y compris pendant les 360 ms de la fermeture animée.
+  // L'intention est « on a changé de tâche », pas « le cache a répondu ». Effet
+  // de bord assumé : une modification venue d'ailleurs ne réécrit pas les champs
+  // ouverts, ce qui est de toute façon préférable à écraser une saisie en cours.
   useEffect(() => {
     setTitle(task?.title ?? '')
     setDescription(task?.description ?? '')
@@ -80,7 +87,8 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
     setConfirmingDelete(false)
     setDueOpen(false)
     setRecurrenceOpen(false)
-  }, [task])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id])
 
   if (!task) return null
 
@@ -102,9 +110,18 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
   // titre et description attendent, on les commit avant de fermer (le `onBlur` ferait
   // le même appel, mais rien ne garantit qu'il parte avant la fermeture — et ces
   // commits comme `useUpdateTask` sont idempotents, un doublon serait sans effet).
+  //
+  // **Une seule mutation pour les deux champs.** Les commiter séparément partait en
+  // deux requêtes, donc deux mises à jour optimistes et deux invalidations : quatre
+  // vagues de rendu de la liste pendant que la feuille redescend, et la sortie
+  // saccadait. Rien à envoyer quand rien n'a changé.
   function saveAndClose() {
-    commitTitle()
-    commitDescription()
+    const nextTitle = title.trim()
+    const nextDescription = description.trim() || null
+    const edits: Parameters<typeof updateTask.mutate>[0]['edits'] = {}
+    if (nextTitle && nextTitle !== task!.title) edits.title = nextTitle
+    if (nextDescription !== (task!.description ?? null)) edits.description = nextDescription
+    if (Object.keys(edits).length > 0) edit(edits)
     ;(closeRef.current ?? onClose)()
   }
 
@@ -189,7 +206,7 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
             aria-label="Description de la tâche"
             onChange={(event) => setDescription(event.target.value)}
             onBlur={commitDescription}
-            className="mt-2 w-full resize-none rounded-panel border-[1.5px] border-border bg-canvas px-3.5 py-3 text-[12.5px] text-ink outline-none placeholder:text-placeholder focus:border-primary focus:bg-surface sm:rounded-lg sm:py-2.5 sm:text-[12px]"
+            className="mt-2 w-full resize-none rounded-panel border-[1.5px] border-border bg-surface px-3.5 py-3 text-[12.5px] text-ink outline-none placeholder:text-placeholder focus:border-primary sm:rounded-lg sm:py-2.5 sm:text-[12px]"
           />
         ) : (
           <button
@@ -279,6 +296,23 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
             </div>
           )}
         </div>
+
+        {/* Le pendant desktop du panneau ci-dessus : le pied bascule le même
+            `recurrenceOpen`, il lui faut une cible au-dessus de `sm`. Posé AVANT
+            le pied, comme le calendrier qui s'ouvre vers le haut : sous la barre,
+            l'éditeur passerait derrière « Supprimer » et « Terminé ». */}
+        {recurrenceOpen && (
+          <div className="animate-fade-in mt-4.5 hidden rounded-panel bg-canvas p-3.5 sm:block">
+            <RecurrenceEditor
+              preset={preset}
+              interval={interval}
+              weekdays={weekdays}
+              onPresetChange={(next) => changeRecurrence({ preset: next, interval: 1 })}
+              onIntervalChange={(next) => changeRecurrence({ interval: next })}
+              onWeekdaysChange={(next) => changeRecurrence({ weekdays: next })}
+            />
+          </div>
+        )}
 
         {(updateTask.error || deleteTask.error) && (
           <Alert className="mt-3">
@@ -373,14 +407,12 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
             <button
               type="submit"
               form={formId}
-              className={cn(
-                'order-1 flex min-h-12 flex-1 cursor-pointer items-center justify-center rounded-panel bg-primary px-4.5 text-ui font-medium text-white',
-                'sm:order-none sm:min-h-0 sm:flex-none sm:shrink-0 sm:rounded-md sm:py-2.5 sm:text-[12px]',
-                'transition-[background-color,box-shadow,transform] duration-150',
-                'hover:-translate-y-px hover:bg-primary-hover hover:shadow-primary-hover',
-                'active:translate-y-px active:bg-primary-active',
-                'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
-              )}
+              className={buttonClasses({
+                className: cn(
+                  'order-1 min-h-12 flex-1 rounded-panel px-4.5 text-ui',
+                  'sm:order-none sm:min-h-0 sm:flex-none sm:shrink-0 sm:rounded-md sm:py-2.5 sm:text-[12px]',
+                ),
+              })}
             >
               Terminé
             </button>

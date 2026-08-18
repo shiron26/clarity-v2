@@ -33,7 +33,7 @@ export function ObjectivePills({ objectives, value, onChange }: ObjectivePillsPr
               BASE,
               selected
                 ? 'font-semibold text-white'
-                : 'border border-border bg-canvas text-ink-2 hover:border-[#a9beff]',
+                : 'border border-border bg-canvas text-ink-2 hover:border-border-primary-soft',
             )}
             style={
               selected
@@ -65,7 +65,7 @@ export function ObjectivePills({ objectives, value, onChange }: ObjectivePillsPr
           BASE,
           value === null
             ? 'bg-ink-2 font-semibold text-white'
-            : 'border border-border bg-canvas text-ink-muted hover:border-[#a9beff]',
+            : 'border border-border bg-canvas text-ink-muted hover:border-border-primary-soft',
         )}
       >
         Aucun

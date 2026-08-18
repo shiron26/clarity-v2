@@ -67,7 +67,25 @@ Le détail vit dans les commentaires des migrations (`supabase/migrations/`). R�
   la valeur envoyée par le client n'est lue que comme un signal booléen
   (null / non-null) : l'estampille vient de `now()`, jamais de l'horloge du navigateur.
   `slot` n'est jamais envoyé non plus : le serveur attribue le plus petit libre sous
-  verrou et lève `slot_full` s'il n'en reste aucun.
+  verrou et lève `slot_full` s'il n'en reste aucun. Idem `objective_entry.entry_date` :
+  posée au jour applicatif, jamais choisie par le client.
+- **L'unicité d'un slot porte sur le chevauchement de fenêtre**, pas sur l'année : deux
+  contraintes d'exclusion GiST (`objective_slot_user_excl` / `_space_excl`) sur
+  `window_range`, colonne générée depuis `(year, quarter)` par
+  `private.objective_window()`. Conséquence côté front : une collision remonte en
+  **`23P01`**, pas en `23505` — `queryError.ts` doit le classer, sinon elle se lit
+  « erreur de notre côté ». Le verrou consultatif de l'attribution garde l'année comme
+  clé, et c'est correct : les bornes étant `[début, fin)`, deux fenêtres ne peuvent se
+  chevaucher que dans la même année.
+- **`measure`, `period_unit`, `entry_mode` et `quarter` sont figés après création**, au
+  même titre que `year`, `kind` et `slot` : changer l'unité de période orphelinerait
+  l'historique d'`objective_period`, et basculer cumul → relevé changerait
+  rétroactivement le sens des saisies passées. Changer de nature, c'est supprimer et
+  recréer — le DELETE reste libre. Restent modifiables : le contenu, `cadence`
+  (l'ajustement de rythme en dépend), `target_value`, `unit`, `direction`, `closed_at`.
+- **Les contraintes en `CASE` se réécrivent, elles ne se complètent pas** : la branche
+  `else` avale toute valeur non listée, donc ajouter une valeur de `kind` ou de
+  `measure` casse la forme en silence.
 
 ## Règles front
 
@@ -100,6 +118,19 @@ Le détail vit dans les commentaires des migrations (`supabase/migrations/`). R�
   marque, `conic-gradient`. Tout le reste passe en `className`.
 - Les couleurs dynamiques (couleur d'une liste/d'un objectif venant de la base) restent
   en `style={{ … }}` : elles ne peuvent pas être des classes statiques.
+- **Un champ de saisie est blanc (`bg-surface`), toujours.** Le fond gris à la
+  saisie a longtemps été recopié en `bg-canvas focus:bg-surface` de composant en
+  composant : il faisait lire un champ vide comme un champ désactivé, et le
+  passage au blanc au focus donnait un clignotement à chaque tabulation. Le gris
+  reste réservé à `disabled` (`bg-surface-subtle`).
+- **Un champ facultatif se replie derrière un `DisclosureLink`** (« + Ajouter une
+  cible totale »). Affiché en permanence, il se lit comme une case à remplir et
+  pousse à inventer une valeur : « trois fois par semaine en famille » n'a pas de
+  total. Le champ s'ouvre déjà déplié quand il porte déjà une valeur.
+- **`SegmentedGroup` à partir de trois choix, `OptionCard` en dessous.** Un segment
+  ne porte qu'un mot : parfait pour une échelle qu'on lit d'un coup (1 à 7 séances,
+  cinq récurrences), inutilisable quand il n'y a que deux réponses, où le choix
+  mérite une phrase d'explication que seule une carte peut porter.
 - Composer les classes avec `cn()` (`src/lib/cn.ts`). Toute nouvelle taille `--text-*`
   ou ombre `--shadow-*` doit être déclarée dans `extendTailwindMerge` de ce fichier,
   sinon tailwind-merge la prend pour une couleur et écrase la vraie.
@@ -121,11 +152,36 @@ Le détail vit dans les commentaires des migrations (`supabase/migrations/`). R�
   `deleteView()` (`src/lib/viewWrites.ts`)** : `supabase gen types` n'émet
   `Insert`/`Update` que pour les vraies tables, une vue n'a qu'une `Row`. Le helper
   concentre l'unique cast et interdit au passage d'envoyer les colonnes serveur.
-  `profile` est une table claire : écriture directe. `objective_week` n'a qu'un grant
-  `select` — toute écriture partirait en 42501.
+  `profile`, `review` et `objective_entry` sont des tables claires : écriture
+  directe, elles ont leurs types `Insert`/`Update`. `objective_period` n'a qu'un
+  grant `select` — toute écriture partirait en 42501.
 - **Pas d'embedding PostgREST** sur `task` / `objective` / `list` / `milestone` /
   `space` / `review_item` : ce sont des vues, sans métadonnée de clé étrangère
   (`Relationships: []`). Charger séparément et joindre en mémoire.
+
+### Wording
+
+Les concepts du produit (places, cadence, relevé, horizon) ne vont pas de soi :
+le texte est le seul accompagnement dont dispose l'utilisateur. Il est donc
+**court, concret, et il dit à quoi sert ce qu'on demande** avant de le demander.
+
+- **Pas de tiret cadratin (`—`) dans les textes visibles.** C'est la signature
+  d'une copie écrite par une IA, et elle se repère immédiatement. Une virgule,
+  un point ou deux-points font le même travail. La règle porte sur ce que
+  l'utilisateur lit (titres, sous-titres, libellés, aides, messages d'erreur,
+  états vides), pas sur les commentaires de code.
+- Une information n'est dite **qu'une fois** dans un parcours. Répéter la même
+  réassurance sur trois écrans la transforme en bruit.
+- Pas de réassurance avant que l'inquiétude existe, pas de conséquence annoncée
+  sans être nommée (« ce choix décide de ce que l'application vous demandera »
+  ne dit rien tant qu'on ne dit pas quoi).
+- Les libellés d'un choix disent **ce que l'option fait**, pas seulement son
+  nom : sans cela l'utilisateur tranche à pile ou face.
+- Le jargon interne (`T3`, « annuel / trimestriel », « principal / secondaire »,
+  « slot ») ne sort jamais à l'écran quand une date ou un mot courant existe.
+- Les titres et sous-titres des questions de création d'objectif vivent dans
+  `src/components/objectives/draft/copy.ts`, jamais recopiés : deux parcours
+  posent les mêmes questions.
 
 ### Erreurs
 
@@ -160,12 +216,19 @@ Le détail vit dans les commentaires des migrations (`supabase/migrations/`). R�
   C'est ce qui borne la section « Terminées » de l'écran Tâches à la journée en
   cours (SPEC §5), via l'option `completedSince` de `useTasks` — sinon la vue
   « Toutes » rapatrie tout l'historique des tâches cochées.
-- **`objective_week` fait foi pour la progression** — jamais recalculée depuis les
-  tâches du cache. Le détail jour par jour se lit via `public.objective_active_days()`,
-  qui réutilise `private.credit_day` : **ne jamais réimplémenter cette règle en TS**.
+- **`objective_period` fait foi pour la progression** — jamais recalculée depuis les
+  tâches du cache. La période est la semaine ou le mois selon `objective.period_unit` :
+  l'indexer par le seul numéro de période est ambigu dès qu'une grille de trimestre
+  enjambe deux années ISO, d'où `periodKey(objectifId, unit, year, index)`
+  (`src/hooks/useObjectivePeriods.ts`). Le détail jour par jour se lit via
+  `public.objective_active_days()`, qui réutilise `private.credit_day` : **ne jamais
+  réimplémenter cette règle en TS**. Même chose pour la **régularité** — 4 périodes
+  closes, chacune plafonnée à 100 % — qui vit dans `public.objective_regularity()` et
+  rend aussi les valeurs projetées pour que le front n'ait rien à recalculer.
 - Cocher une tâche a deux effets serveur invisibles côté client (rafraîchissement du
   relevé hebdo, création de l'occurrence récurrente suivante) : invalider
-  `task.all`, `objectiveWeek.all` et `objectiveActiveDays.all`, pas seulement la ligne.
+  `task.all`, `objectivePeriod.all`, `objectiveRegularity.all` et
+  `objectiveActiveDays.all`, pas seulement la ligne.
 
 ### Realtime — signal only
 

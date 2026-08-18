@@ -5,21 +5,25 @@
 // Clé par utilisateur : deux comptes sur le même navigateur ne partagent pas
 // leurs réglages, et « masquer les objectifs » ne fuite pas d'un compte à l'autre.
 
+// Deux réglages ont disparu avec la refonte du dashboard (§3) : « Statistiques »
+// n'a plus de bloc à piloter — l'activité trimestrielle se consulte sur la page
+// Objectif et sur l'écran Année — et « Jalons » n'a plus de sens, puisqu'une
+// liste d'étapes n'est plus un supplément posé sur une carte quelconque : c'est
+// LA visualisation d'un objectif jalonné. `readPrefs` fusionne avec les défauts,
+// les préférences déjà stockées survivent au retrait.
+// « Masquer les objectifs » a quitté cette table : il vaut pour toute
+// l'application et vit désormais dans la coquille (`usePrivacy`). Il n'a jamais
+// été une préférence d'écran — quelqu'un qui masque ses titres en open space ne
+// les masque pas « sur l'accueil ». Son ancienne valeur est reprise une fois par
+// `lib/privacyStorage.ts`.
 export type DashboardPrefs = {
-  /** Masque les titres d'objectifs (regard par-dessus l'épaule). */
-  privacy: boolean
   showObjectives: boolean
-  showMilestones: boolean
-  showFocus: boolean
-  showStats: boolean
+  showToday: boolean
 }
 
 export const DEFAULT_PREFS: DashboardPrefs = {
-  privacy: false,
   showObjectives: true,
-  showMilestones: true,
-  showFocus: true,
-  showStats: true,
+  showToday: true,
 }
 
 export const PREF_ROWS: { key: keyof DashboardPrefs; label: string; hint: string }[] = [
@@ -28,12 +32,10 @@ export const PREF_ROWS: { key: keyof DashboardPrefs; label: string; hint: string
     label: 'Section Objectifs',
     hint: 'Cartes d’objectifs en haut du dashboard',
   },
-  { key: 'showMilestones', label: 'Jalons', hint: 'Afficher les jalons sur les cartes d’objectif' },
-  { key: 'showFocus', label: 'Focus du jour', hint: 'Bloc des tâches du jour et des retards' },
-  { key: 'showStats', label: 'Statistiques', hint: 'Activité du trimestre, semaine par semaine' },
+  { key: 'showToday', label: 'Aujourd’hui', hint: 'Les tâches du jour, sous vos objectifs' },
 ]
 
-export function prefsStorageKey(userId: string): string {
+function prefsStorageKey(userId: string): string {
   return `clarity.dashboard.${userId}`
 }
 

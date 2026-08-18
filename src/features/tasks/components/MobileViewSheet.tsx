@@ -2,11 +2,10 @@ import { useNavigate } from 'react-router'
 import { Modal } from '../../../components/ui/Modal'
 import type { List } from '../../../hooks/useLists'
 import { cn } from '../../../lib/cn'
-import { SCOPE_NAV_LABELS, type TaskScope } from '../taskScope'
+import { SCOPE_NAV_LABELS, SCOPE_ORDER, type TaskScope } from '../taskScope'
 import { SORT_LABELS, SORT_OPTIONS, type SortMode } from '../taskSort'
 import { listSearch, scopeSearch } from '../taskViewParams'
-
-type MobileScope = 'today' | 'week' | 'all'
+import { DEFAULT_LIST_COLOR } from '../../../lib/listPalette'
 
 type MobileViewSheetProps = {
   open: boolean
@@ -14,8 +13,9 @@ type MobileViewSheetProps = {
   scope: TaskScope
   listId: string | null
   lists: List[]
-  /** « Demain » n'a pas de ligne ici : on y va par la bascule de l'en-tête. */
-  counts: Record<MobileScope, number>
+  /** Les quatre vues sont listées ici : le sélecteur de la carte n'en montre
+   *  que trois, faute de largeur. */
+  counts: Record<TaskScope, number>
   sort: SortMode
   onSortChange: (mode: SortMode) => void
   onManageLists: () => void
@@ -48,7 +48,7 @@ export function MobileViewSheet({
     onClose()
   }
 
-  const scopes: MobileScope[] = ['today', 'week', 'all']
+  const scopes = SCOPE_ORDER
 
   return (
     <Modal open={open} onClose={onClose} title="Afficher" variant="sheet">
@@ -64,7 +64,7 @@ export function MobileViewSheet({
                 key={candidate}
                 type="button"
                 aria-current={active}
-                onClick={() => go(scopeSearch(candidate))}
+                onClick={() => go(scopeSearch(candidate, listId))}
                 className={cn(ROW, active && 'bg-primary-soft')}
               >
                 <span className={cn('flex-1 text-[13.5px]', ACTIVE_LABEL(active))}>
@@ -88,7 +88,7 @@ export function MobileViewSheet({
         </p>
         <div role="group" aria-labelledby="mobile-view-lists" className="flex flex-col">
           {lists.map((list) => {
-            const active = scope === 'list' && listId === list.id
+            const active = listId === list.id
             return (
               <button
                 key={list.id}
@@ -100,7 +100,7 @@ export function MobileViewSheet({
                 <span
                   aria-hidden
                   className="size-1.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: list.color ?? '#9a9aa6' }}
+                  style={{ backgroundColor: list.color ?? DEFAULT_LIST_COLOR }}
                 />
                 <span className={cn('flex-1 text-[13.5px]', ACTIVE_LABEL(active))}>
                   {list.name}

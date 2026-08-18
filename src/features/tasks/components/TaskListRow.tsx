@@ -11,8 +11,10 @@ import type { List } from '../../../hooks/useLists'
 import type { Task } from '../../../hooks/useTasks'
 import { addDays, formatDayMonth, type IsoDate } from '../../../lib/appDate'
 import { cn } from '../../../lib/cn'
-import { objectiveSkin } from '../../../lib/objectivePalette'
+import type { TaskAge } from '../../../lib/taskAge'
 import { DueQuickLinks } from './DueQuickLinks'
+import { taskRowSkin } from '../../../components/tasks/taskRowSkin'
+import { DEFAULT_LIST_COLOR } from '../../../lib/listPalette'
 
 type TaskListRowProps = {
   task: Task
@@ -34,8 +36,10 @@ type TaskListRowProps = {
   /** « En retard · Hier » — posé par la section du même nom. La ligne n'affiche
    *  sinon l'échéance que dans l'infobulle du bouton calendrier. */
   overdueLabel?: string
+  /** Ancienneté, en vue « Sans date » seulement : ailleurs l'échéance parle
+   *  déjà. Jamais en rouge — c'est un constat (REFONTE §5). */
+  age?: TaskAge
   onToggle: (task: Task) => void
-  onRename: (task: Task, title: string) => void
   onToggleImportant: (task: Task) => void
   onPickList: (task: Task, listId: string | null) => void
   onPickDue: (task: Task, dueDate: IsoDate | null) => void
@@ -45,7 +49,7 @@ type TaskListRowProps = {
   onGripKeyDown?: (event: KeyboardEvent<HTMLButtonElement>, task: Task) => void
 }
 
-// Les trois actions rapides de fin de ligne : même carré fantôme de 30px, seule
+// Les deux actions rapides de fin de ligne : même carré fantôme de 30px, seule
 // la couleur de survol les distingue (maquette v2).
 const ACTION = cn(
   'flex size-[30px] shrink-0 cursor-pointer items-center justify-center rounded-sm text-ink-muted',
@@ -65,8 +69,8 @@ export function TaskListRow({
   donePhase,
   reducedMotion = false,
   overdueLabel,
+  age,
   onToggle,
-  onRename,
   onToggleImportant,
   onPickList,
   onPickDue,
@@ -79,29 +83,18 @@ export function TaskListRow({
   // toute la liste à chaque passage de souris. `focusWithin` fait entrer le
   // clavier par la même porte — la maquette, elle, ne connaît que la souris.
   const [revealed, setRevealed] = useState(false)
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(task.title)
   const [openMenu, setOpenMenu] = useState<'list' | 'due' | null>(null)
 
   const listTriggerRef = useRef<HTMLButtonElement>(null)
   const dueTriggerRef = useRef<HTMLButtonElement>(null)
 
   const done = task.completed_at !== null
-  const accent = objectiveSlot != null ? objectiveSkin(objectiveSlot).core : null
-  const linked = accent !== null && !done
-  const bursting = donePhase !== undefined && !reducedMotion
-
-  function startEditing() {
-    setDraft(task.title)
-    setEditing(true)
-  }
-
-  function commitEditing() {
-    setEditing(false)
-    const next = draft.trim()
-    // Un titre vide n'efface pas la tâche : on annule simplement.
-    if (next && next !== task.title) onRename(task, next)
-  }
+  const { accent, linked, bursting, doneClasses, style } = taskRowSkin({
+    objectiveSlot,
+    done,
+    donePhase,
+    reducedMotion,
+  })
 
   function onRowBlur(event: FocusEvent<HTMLLIElement>) {
     if (event.currentTarget.contains(event.relatedTarget)) return
@@ -116,10 +109,11 @@ export function TaskListRow({
         : formatDayMonth(task.due_date)
     : 'Planifier'
 
-  // Échéance, ouverture et suppression sont désormais permanentes (maquette v2) :
-  // il ne reste au survol que ce qui n'a rien à dire au repos — l'invite « + Liste »
-  // et le drapeau d'une tâche non importante. Les deux se masquent par `invisible`
-  // et non par un rendu conditionnel : la largeur de la ligne ne bouge pas.
+  // Échéance et suppression sont permanentes (maquette v2) : il ne reste au
+  // survol que ce qui n'a rien à dire au repos — l'invite « + Liste » et le
+  // drapeau d'une tâche non importante. Les deux se masquent par `invisible` et
+  // non par un rendu conditionnel : ni la largeur de la ligne ni la position du
+  // titre ne bougent.
   const hideAddList = !revealed && openMenu !== 'list'
   const hideFlag = !task.is_important && !revealed
 
@@ -136,17 +130,9 @@ export function TaskListRow({
         linked ? 'border-l-[3px] pl-3.5' : 'pl-[17px]',
         dragging && 'opacity-35',
         grabbed && 'bg-primary-soft/60',
-        !reducedMotion && donePhase === 1 && 'animate-row-flash',
-        !reducedMotion && donePhase === 2 && 'animate-row-collapse overflow-hidden',
+        doneClasses,
       )}
-      style={
-        linked && accent
-          ? {
-              borderLeftColor: accent,
-              backgroundImage: `linear-gradient(90deg,${accent}0d,transparent 60%)`,
-            }
-          : undefined
-      }
+      style={style}
     >
       {canDrag && (
         <button
@@ -174,58 +160,9 @@ export function TaskListRow({
         onToggle={() => onToggle(task)}
       />
 
-      {/* La récurrence a quitté le bloc d'actions pour la gauche du titre : c'est
-          une propriété de la tâche, pas une action (maquette v2). */}
-      {task.recurrence != null && (
-        <span title="Tâche récurrente" className="flex shrink-0 items-center text-[#b8b8b0]">
-          <RepeatIcon className="size-3" />
-          <span className="sr-only">Tâche récurrente</span>
-        </span>
-      )}
-
-      {editing ? (
-        <input
-          value={draft}
-          autoFocus
-          aria-label="Titre de la tâche"
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={commitEditing}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') commitEditing()
-            if (event.key === 'Escape') setEditing(false)
-          }}
-          className="min-w-0 flex-1 rounded-sm border-[1.5px] border-[#a9beff] bg-canvas px-2.5 py-1.5 text-[13px] text-ink outline-none"
-        />
-      ) : (
-        <button
-          type="button"
-          onDoubleClick={startEditing}
-          // Le double-clic est un geste souris : Entrée et F2 ouvrent la même
-          // édition au clavier.
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === 'F2') {
-              event.preventDefault()
-              startEditing()
-            }
-          }}
-          title="Double-clic pour modifier"
-          className={cn(
-            'min-w-0 flex-1 cursor-text truncate rounded-xs text-left text-[13px] transition-colors duration-300',
-            'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
-            done ? 'text-ink-muted line-through' : 'text-ink',
-          )}
-        >
-          {task.title}
-        </button>
-      )}
-
-      {overdueLabel && (
-        <span className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-danger">
-          <CalendarIcon className="size-3 shrink-0" />
-          {overdueLabel}
-        </span>
-      )}
-
+      {/* L'importance se marque au plus près de la case : c'est le deuxième
+          jugement qu'on porte sur une ligne après « fait ou pas », et il est
+          plus souvent posé que l'échéance ou la liste. */}
       <button
         type="button"
         aria-pressed={task.is_important}
@@ -243,6 +180,54 @@ export function TaskListRow({
       >
         <span aria-hidden>⚑</span>
       </button>
+
+      {/* La récurrence a quitté le bloc d'actions pour la gauche du titre : c'est
+          une propriété de la tâche, pas une action (maquette v2). */}
+      {task.recurrence != null && (
+        <span title="Tâche récurrente" className="flex shrink-0 items-center text-[#b8b8b0]">
+          <RepeatIcon className="size-3" />
+          <span className="sr-only">Tâche récurrente</span>
+        </span>
+      )}
+
+      {/* Cliquer la tâche l'ouvre, comme la toucher en mobile (`TaskRowCompact`).
+          La ligne dépensait ce clic pour un renommage en place, déclenché au
+          double-clic : un geste rare, invisible, et qui confisquait l'unique
+          interaction évidente de la ligne. Le titre se modifie dans la modale,
+          avec tout le reste.
+
+          Le bouton occupe l'espace libre (`flex-1`) : « cliquer la tâche »
+          marche donc sur toute la zone vide entre le titre et les actions, sans
+          rendre le `<li>` cliquable — ce qui imbriquerait des éléments
+          interactifs. Et un `<button>` répond nativement à Entrée et Espace, ce
+          qui remplace le raccourci F2 du renommage. */}
+      <button
+        type="button"
+        onClick={() => onOpen(task)}
+        aria-label={`Ouvrir ${task.title}`}
+        title="Ouvrir la tâche"
+        className={cn(
+          'min-w-0 flex-1 cursor-pointer truncate rounded-xs text-left text-[13px] transition-colors duration-300',
+          'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
+          done ? 'text-ink-muted line-through' : 'text-ink',
+        )}
+      >
+        {task.title}
+      </button>
+
+      {overdueLabel && (
+        <span className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-danger">
+          <CalendarIcon className="size-3 shrink-0" />
+          {overdueLabel}
+        </span>
+      )}
+
+      {age && (
+        <span title={age.long} className="shrink-0 text-[11px] text-ink-muted">
+          <span aria-hidden>{age.short}</span>
+          <span className="sr-only">{age.long}</span>
+        </span>
+      )}
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
         <ListPill
@@ -270,7 +255,7 @@ export function TaskListRow({
                   <span
                     aria-hidden
                     className="size-1.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: candidate.color ?? '#9a9aa6' }}
+                    style={{ backgroundColor: candidate.color ?? DEFAULT_LIST_COLOR }}
                   />
                 ),
                 onSelect: () => onPickList(task, candidate.id),
@@ -334,15 +319,6 @@ export function TaskListRow({
           </Popover>
         </span>
 
-        <button
-          type="button"
-          aria-label={`Ouvrir ${task.title}`}
-          title="Ouvrir la tâche"
-          onClick={() => onOpen(task)}
-          className={cn(ACTION, 'text-[13px]')}
-        >
-          <span aria-hidden>⤢</span>
-        </button>
         <button
           type="button"
           aria-label={`Supprimer ${task.title}`}
