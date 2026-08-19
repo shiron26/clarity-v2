@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { CalendarIcon } from '../../../components/icons/CalendarIcon'
 import { SegmentedGroup } from '../../../components/ui/SegmentedGroup'
 import { cn } from '../../../lib/cn'
@@ -43,6 +44,18 @@ export function RecurrenceEditor({
   onWeekdaysChange,
   variant = 'segmented',
 }: RecurrenceEditorProps) {
+  // Le nombre s'édite en local et ne part qu'au `blur` : la feuille d'édition
+  // écrit chaque changement en base, et taper « 12 » y partait en deux requêtes,
+  // dont une qui posait un rythme (« tous les 1 jours ») que personne n'a voulu.
+  const [draft, setDraft] = useState(String(interval))
+  useEffect(() => setDraft(String(interval)), [interval])
+  const parsedInterval = Math.max(1, Number.parseInt(draft, 10) || 1)
+
+  function commitInterval() {
+    setDraft(String(parsedInterval))
+    if (parsedInterval !== interval) onIntervalChange(parsedInterval)
+  }
+
   function toggleWeekday(iso: number) {
     const selected = weekdays.includes(iso)
     // Une règle hebdomadaire sans aucun jour retombe sur « +7×interval » côté
@@ -102,14 +115,19 @@ export function RecurrenceEditor({
               <input
                 type="number"
                 min={1}
-                value={interval}
-                onChange={(event) =>
-                  onIntervalChange(Math.max(1, Number.parseInt(event.target.value, 10) || 1))
-                }
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onBlur={commitInterval}
+                onKeyDown={(event) => {
+                  // Pas de `preventDefault` : la feuille d'édition ferme sur
+                  // Entrée, et le `blur` d'un démontage n'est pas garanti — on
+                  // écrit ici, avant qu'elle parte.
+                  if (event.key === 'Enter') commitInterval()
+                }}
                 className="w-14 rounded-sm border-[1.5px] border-border bg-surface px-2.5 py-2 text-[12.5px] text-ink outline-none focus:border-primary"
               />
             </label>
-            <span className="text-[12px] text-ink-3">{unitLabel(preset, interval)}</span>
+            <span className="text-[12px] text-ink-3">{unitLabel(preset, parsedInterval)}</span>
           </div>
 
           {preset === 'weekly' && (

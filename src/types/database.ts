@@ -484,6 +484,7 @@ export type Database = {
           period_year: number
         }[]
       }
+      skip_task_occurrence: { Args: { p_task: string }; Returns: string }
       space_objective_weekly_state: {
         Args: { p_iso_week: number; p_iso_year: number; p_objective: string }
         Returns: string

@@ -40,6 +40,8 @@ import { DoneSection } from '../components/DoneSection'
 import { ListManagerModal } from '../components/ListManagerModal'
 import { MobileViewSheet } from '../components/MobileViewSheet'
 import { OverdueSection } from '../components/OverdueSection'
+import { TaskDeleteDialog } from '../../../components/tasks/TaskDeleteDialog'
+import { isRecurring } from '../../../lib/recurrence'
 import { TaskEditModal } from '../components/TaskEditModal'
 import { TaskList, type TaskRowActions } from '../components/TaskList'
 import { TasksCardHeaderMobile } from '../components/TasksCardHeaderMobile'
@@ -136,6 +138,10 @@ export function TasksPage() {
   const [search, setSearch] = useState('')
   const [mobileViewOpen, setMobileViewOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  // Supprimer une occurrence récurrente n'est pas une suppression ordinaire :
+  // elle arrête la série. On demande, au lieu de trancher à la place de
+  // l'utilisateur.
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // Changer de vue remet le tri et la recherche à leur défaut : ils ne suivent pas.
   useEffect(() => {
@@ -301,6 +307,7 @@ export function TasksPage() {
   }
 
   const editingTask = editingId ? (allTasks.find((t) => t.id === editingId) ?? null) : null
+  const deletingTask = deletingId ? (allTasks.find((t) => t.id === deletingId) ?? null) : null
 
   // --- Chargement et erreurs (même modèle que HomePage) ----------------------
   const queries: QueryLike[] = [
@@ -384,7 +391,10 @@ export function TasksPage() {
     onPickList: (t, value) => updateTask.mutate({ id: t.id, edits: { list_id: value } }),
     onPickDue: (t, value) => updateTask.mutate({ id: t.id, edits: { due_date: value } }),
     onOpen: (t) => setEditingId(t.id),
-    onDelete: (t) => deleteTask.mutate(t.id),
+    onDelete: (t) =>
+      isRecurring(t.recurrence) && t.completed_at === null
+        ? setDeletingId(t.id)
+        : deleteTask.mutate(t.id),
   }
 
   return (
@@ -480,6 +490,8 @@ export function TasksPage() {
         <DoneSection tasks={doneTasks} objectiveSlotOf={objectiveSlotOf} onToggle={handleToggle} />
       </div>
 
+
+      <TaskDeleteDialog task={deletingTask} onClose={() => setDeletingId(null)} />
 
       <TaskEditModal
         task={editingTask}

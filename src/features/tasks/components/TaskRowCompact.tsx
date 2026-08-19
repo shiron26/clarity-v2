@@ -4,7 +4,9 @@ import { TaskCheckbox } from '../../../components/tasks/TaskCheckbox'
 import type { DonePhase } from '../../../components/tasks/taskDone'
 import type { List } from '../../../hooks/useLists'
 import type { Task } from '../../../hooks/useTasks'
+import type { IsoDate } from '../../../lib/appDate'
 import { cn } from '../../../lib/cn'
+import { isRecurring, recurrenceLockReason } from '../../../lib/recurrence'
 import type { CSSProperties } from 'react'
 import type { TaskAge } from '../../../lib/taskAge'
 import { taskRowSkin } from '../../../components/tasks/taskRowSkin'
@@ -15,6 +17,10 @@ export type TaskRowCompactProps = {
   task: Task
   objectiveSlot: number | null | undefined
   list: List | undefined
+  /** Ancre serveur, pour verrouiller la case d'une récurrente pas encore échue.
+   *  Absente dans la section « en retard », où l'échéance est passée par
+   *  définition et où la case ne se verrouille donc jamais. */
+  today?: IsoDate
   donePhase?: DonePhase
   reducedMotion?: boolean
   /** « En retard · Hier » — posé par la section du même nom, absent ailleurs. Le
@@ -48,6 +54,7 @@ export function TaskRowCompact({
   task,
   objectiveSlot,
   list,
+  today,
   donePhase,
   reducedMotion = false,
   overdueLabel,
@@ -72,7 +79,7 @@ export function TaskRowCompact({
     !!overdueLabel ||
     !!age ||
     !!list ||
-    task.recurrence != null ||
+    isRecurring(task.recurrence) ||
     task.is_important ||
     !!task.space_id
 
@@ -105,6 +112,7 @@ export function TaskRowCompact({
         accent={accent}
         compact
         bursting={bursting}
+        lockedReason={today ? recurrenceLockReason(task, today) : null}
         onToggle={() => onToggle(task)}
       />
 
@@ -138,7 +146,7 @@ export function TaskRowCompact({
                 <span className="sr-only">{age.long}</span>
               </span>
             )}
-            {task.recurrence != null && (
+            {isRecurring(task.recurrence) && (
               <span className="text-[14px] text-ink-muted" aria-hidden>
                 ↻
               </span>

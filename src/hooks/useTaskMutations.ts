@@ -183,6 +183,40 @@ export function useDeleteTask() {
 }
 
 /**
+ * Passer son tour sur une occurrence récurrente : c'est ce que choisit
+ * l'utilisateur quand il supprime une tâche qui se répète et répond « seulement
+ * cette fois ».
+ *
+ * Le serveur déplace l'échéance à la suivante et rend cette date ; il ne supprime
+ * ni ne recrée rien. Le calcul reste dans `private.next_due`, jamais réimplémenté
+ * ici : l'ancre est l'échéance sautée, pas le jour courant, pour que la série
+ * garde sa grille.
+ *
+ * Pas de patch optimiste : c'est une action ponctuelle, et on ne connaît pas la
+ * date d'arrivée avant la réponse.
+ */
+export function useSkipTaskOccurrence() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    retry: retryAuthTransient,
+
+    mutationFn: async (id: string): Promise<IsoDate> => {
+      const { data, error } = await supabase.rpc('skip_task_occurrence', { p_task: id })
+      if (error) throw error
+      return data
+    },
+
+    // L'occurrence sautée peut être liée à un objectif : son échéance décide du
+    // jour crédité si elle est cochée plus tard.
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.task.all })
+      invalidateProgress(queryClient)
+    },
+  })
+}
+
+/**
  * Réordonnancement manuel : on n'écrit que les lignes dont le rang change.
  * `position` est global au propriétaire, pas propre à la vue affichée — deux
  * tâches peuvent donc se retrouver ex æquo ; `useTasks` départage sur

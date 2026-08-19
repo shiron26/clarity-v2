@@ -51,6 +51,19 @@ const BUSINESS_RULES: Array<[string, string]> = [
     'Une tâche se relie à un objectif principal ou à un objectif repris — jamais à un secondaire.',
   ],
   ['task_objective_owner_mismatch', 'Cet objectif ne vous appartient pas.'],
+  // Récurrences. La première n'est pas un accident de saisie : elle dit ce qu'on
+  // ne peut pas faire ET comment le contourner, sans quoi elle se lirait comme
+  // une panne.
+  [
+    'task_recurrence_future',
+    'Cette tâche se répète : elle ne se coche pas avant son échéance. Changez sa date si vous l’avez faite en avance.',
+  ],
+  ['task_not_recurring', 'Cette tâche ne se répète pas : il n’y a pas de prochaine fois.'],
+  ['task_already_completed', 'Cette tâche est déjà cochée.'],
+  [
+    'task_recurrence_unknown',
+    'La répétition de cette tâche n’est plus lisible : choisissez-en une nouvelle dans la tâche.',
+  ],
   [
     'task_objective_space_requires_fork',
     'Reprenez d’abord cet objectif pour vous : une tâche partagée ne se relie qu’à votre reprise.',

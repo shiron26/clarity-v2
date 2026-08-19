@@ -186,6 +186,7 @@ export function WeekWidget({ span }: { span: WidgetSpan }) {
           {shown.length > 0 ? (
             <TaskRowList
               tasks={shown}
+              today={today}
               objectives={objectiveById}
               lists={listById}
               onToggle={onToggleTask}

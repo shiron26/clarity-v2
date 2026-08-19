@@ -162,6 +162,7 @@ export function TaskList({
                 task={task}
                 objectiveSlot={objectiveSlotOf(task)}
                 list={listOf(task)}
+                today={rowActions.today}
                 age={ageOf(task) ?? undefined}
                 donePhase={donePhaseFor(task.id)}
                 reducedMotion={rowActions.reducedMotion}
@@ -197,6 +198,7 @@ export function TaskList({
                     task={task}
                     objectiveSlot={objectiveSlotOf(task)}
                     list={listOf(task)}
+                    today={rowActions.today}
                     age={ageOf(task) ?? undefined}
                     donePhase={donePhaseFor(task.id)}
                     reducedMotion={rowActions.reducedMotion}

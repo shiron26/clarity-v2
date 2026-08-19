@@ -4,13 +4,17 @@ import { TaskCheckbox } from './TaskCheckbox'
 import type { DonePhase } from './taskDone'
 import type { List } from '../../hooks/useLists'
 import type { Task } from '../../hooks/useTasks'
-import { formatShortDate } from '../../lib/appDate'
+import { formatShortDate, type IsoDate } from '../../lib/appDate'
+import { isRecurring, recurrenceLockReason } from '../../lib/recurrence'
 import { taskRowSkin } from '../../components/tasks/taskRowSkin'
 
 export type { DonePhase }
 
 type TaskRowProps = {
   task: Task
+  /** Ancre serveur, pour verrouiller la case d'une récurrente pas encore échue.
+   *  Absente dans « En retard », où l'échéance est passée par définition. */
+  today?: IsoDate
   /** Slot de l'objectif lié : donne sa couleur à la ligne et à la case. */
   objectiveSlot: number | null | undefined
   list: List | undefined
@@ -29,6 +33,7 @@ type TaskRowProps = {
 
 export function TaskRow({
   task,
+  today,
   objectiveSlot,
   list,
   onToggle,
@@ -63,6 +68,7 @@ export function TaskRow({
         title={task.title}
         accent={accent}
         bursting={bursting}
+        lockedReason={today ? recurrenceLockReason(task, today) : null}
         onToggle={() => onToggle(task)}
       />
 
@@ -109,7 +115,7 @@ export function TaskRow({
 
         <div className="flex min-w-0 items-center gap-2 lg:shrink-0">
           {list && <ListPill name={list.name} color={list.color} size="sm" />}
-          {task.recurrence != null && (
+          {isRecurring(task.recurrence) && (
             <span
               className="shrink-0 text-[14px] text-ink-muted lg:text-[16px]"
               title="Tâche récurrente"
