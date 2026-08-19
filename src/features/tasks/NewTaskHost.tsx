@@ -5,7 +5,7 @@ import { Modal } from '../../components/ui/Modal'
 import { Spinner } from '../../components/ui/Spinner'
 import { useAppToday } from '../../hooks/useAppToday'
 import { useHotkey } from '../../hooks/useHotkey'
-import { useLists } from '../../hooks/useLists'
+import { selectTaskLists, useLists } from '../../hooks/useLists'
 import { useNewTask } from '../../hooks/useNewTask'
 import { selectPrincipals, useObjectives } from '../../hooks/useObjectives'
 import { year as yearOf } from '../../lib/appDate'
@@ -71,7 +71,8 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
       open
       onClose={onClose}
       principals={principals}
-      lists={listsQuery.data ?? []}
+      // Jamais un aide-mémoire : on n'y range pas une tâche datée.
+      lists={selectTaskLists(listsQuery.data)}
       today={today}
       // Hors de l'écran Tâches il n'y a pas de `?liste=` : la tâche naît sans liste.
       defaultListId={listId}

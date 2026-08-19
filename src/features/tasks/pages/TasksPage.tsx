@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { useAppDayStart, useAppToday } from '../../../hooks/useAppToday'
 import { useDoneSequence } from '../../../hooks/useDoneSequence'
-import { useLists } from '../../../hooks/useLists'
+import { selectMemoLists, selectTaskLists, useLists } from '../../../hooks/useLists'
 import { useNewTask } from '../../../hooks/useNewTask'
 import { usePrivacy } from '../../../hooks/usePrivacy'
 import { groupByObjective, useMilestones } from '../../../hooks/useMilestones'
@@ -61,7 +61,6 @@ import {
   SCOPE_TITLES,
 } from '../taskScope'
 import { parseTaskParams, withLists, withoutLists } from '../taskViewParams'
-import { useTaskDrag } from '../useTaskDrag'
 import { useQueriesState, type QueryLike } from '../../../hooks/useQueriesState'
 import { PageLoading } from '../../../components/layout/PageState'
 
@@ -159,8 +158,19 @@ export function TasksPage() {
   } = useDoneSequence()
 
   // --- Index de rendu (les vues n'ont pas de métadonnée de clé étrangère) ----
-  const allTasks = useMemo(() => tasksQuery.data ?? [], [tasksQuery.data])
-  const lists = useMemo(() => listsQuery.data ?? [], [listsQuery.data])
+  // Les aide-mémoire (Courses, Idées, Pense-bête) et leur contenu ne paraissent
+  // pas ici : ce sont des listes et des tâches ordinaires, mais leur place est
+  // le widget d'accueil. Le filtre vit au point de consommation et non dans
+  // `useLists` / `useTasks`, puisque ce widget a besoin de ce que cet écran écarte.
+  const lists = useMemo(() => selectTaskLists(listsQuery.data), [listsQuery.data])
+  const memoListIds = useMemo(
+    () => new Set(selectMemoLists(listsQuery.data).map((l) => l.id)),
+    [listsQuery.data],
+  )
+  const allTasks = useMemo(
+    () => (tasksQuery.data ?? []).filter((t) => !t.list_id || !memoListIds.has(t.list_id)),
+    [tasksQuery.data, memoListIds],
+  )
   const listById = useMemo(() => new Map(lists.map((l) => [l.id, l])), [lists])
   const objectiveById = useMemo(
     () => new Map((objectivesQuery.data ?? []).map((o) => [o.id, o])),
@@ -238,12 +248,6 @@ export function TasksPage() {
     () => sortTasks(mainTasks, sort, { groupByDate: grouped }),
     [mainTasks, sort, grouped],
   )
-  const mainIds = useMemo(() => sortedMain.map((t) => t.id), [sortedMain])
-  const titleOf = useCallback(
-    (id: string) => allTasks.find((t) => t.id === id)?.title ?? 'Tâche',
-    [allTasks],
-  )
-
   // Positions serveur d'avant le glissement : la mutation en a besoin pour
   // n'écrire que les lignes qui bougent (son `onMutate` réécrit déjà le cache).
   const positionById = useMemo(
@@ -254,17 +258,10 @@ export function TasksPage() {
   // Pas de poignée là où l'échéance impose déjà l'ordre : glisser une ligne d'un
   // jour vers un autre la ramènerait aussitôt dans son groupe.
   const canDrag = sort === 'manual' && !searching && !grouped
-  const drag = useTaskDrag({
-    ids: mainIds,
-    enabled: canDrag,
-    titleOf,
-    onCommit: (orderedIds) => reorderTasks.mutate({ orderedIds, positions: positionById }),
-  })
-
-  const displayedMain = useMemo(() => {
-    const byId = new Map(sortedMain.map((t) => [t.id, t]))
-    return drag.order.map((id) => byId.get(id)).filter((t): t is Task => !!t)
-  }, [drag.order, sortedMain])
+  const handleReorder = useCallback(
+    (orderedIds: string[]) => reorderTasks.mutate({ orderedIds, positions: positionById }),
+    [reorderTasks, positionById],
+  )
 
   // --- Cartes d'objectif : allumées si l'objectif a avancé aujourd'hui -------
   const activeToday = useMemo(() => {
@@ -372,7 +369,7 @@ export function TasksPage() {
   // date la ligne (REFONTE §5).
   const ageOf = (task: Task) => (scope === 'undated' ? taskAge(task, anchor) : null)
 
-  const emptyList = displayedMain.length === 0 && overdueTasks.length === 0
+  const emptyList = sortedMain.length === 0 && overdueTasks.length === 0
 
   // Les actions d'une ligne, en un seul endroit : la section « en retard » et la
   // liste principale rendent les mêmes composants, elles doivent réagir pareil —
@@ -469,27 +466,20 @@ export function TasksPage() {
         ) : (
           <TaskList
             {...rowActions}
-            tasks={displayedMain}
+            tasks={sortedMain}
             objectiveSlotOf={objectiveSlotOf}
             listById={listById}
             ageOf={ageOf}
             grouped={grouped}
             canDrag={canDrag}
             donePhaseFor={donePhaseFor}
-            dragId={drag.dragId}
-            grabbedId={drag.grabbedId}
-            onGripPointerDown={drag.onGripPointerDown}
-            onGripKeyDown={drag.onGripKeyDown}
+            onReorder={handleReorder}
           />
         )}
 
         <DoneSection tasks={doneTasks} objectiveSlotOf={objectiveSlotOf} onToggle={handleToggle} />
       </div>
 
-      {/* Le déplacement au clavier n'a aucun retour visuel pour un lecteur d'écran. */}
-      <p role="status" aria-live="polite" className="sr-only">
-        {drag.announcement}
-      </p>
 
       <TaskEditModal
         task={editingTask}

@@ -1,10 +1,13 @@
-import { Fragment, type KeyboardEvent, type PointerEvent } from 'react'
+import { Fragment, useCallback, useMemo } from 'react'
+import { SortableContainer } from '../../../components/dnd/SortableContainer'
 import type { DonePhase } from '../../../components/tasks/taskDone'
 import type { List } from '../../../hooks/useLists'
 import type { Task } from '../../../hooks/useTasks'
 import { formatDayHeader, type IsoDate } from '../../../lib/appDate'
 import { cn } from '../../../lib/cn'
 import type { TaskAge } from '../../../lib/taskAge'
+import { SortableTaskRow } from './SortableTaskRow'
+import { SortableTaskRowCompact } from './SortableTaskRowCompact'
 import { TaskListRow } from './TaskListRow'
 import { TaskRowCompact } from './TaskRowCompact'
 
@@ -48,10 +51,8 @@ type TaskListProps = TaskRowActions & {
   grouped: boolean
   canDrag: boolean
   donePhaseFor: (taskId: string) => DonePhase | undefined
-  dragId: string | null
-  grabbedId: string | null
-  onGripPointerDown: (event: PointerEvent<HTMLButtonElement>, task: Task) => void
-  onGripKeyDown: (event: KeyboardEvent<HTMLButtonElement>, task: Task) => void
+  /** Appelé une fois au dépôt, avec l'ordre complet des identifiants. */
+  onReorder: (orderedIds: string[]) => void
 }
 
 /**
@@ -60,6 +61,11 @@ type TaskListProps = TaskRowActions & {
  * survol). Le regroupement par jour, lui, est commun : le tri met déjà les
  * lignes en ordre d'échéance des deux côtés, et sans en-tête le mobile donnait
  * à lire une liste qui semblait dans le désordre.
+ *
+ * **Un `SortableContainer` par `<ul>`, et non un seul pour les deux.** Les deux
+ * listes rendent les mêmes identifiants : dans un contexte unique, dnd-kit en
+ * verrait deux exemplaires et refuserait de choisir. Les contextes sont
+ * indépendants, et celle qui est masquée par `display: none` ne parle jamais.
  */
 export function TaskList({
   tasks,
@@ -69,68 +75,89 @@ export function TaskList({
   grouped,
   canDrag,
   donePhaseFor,
-  dragId,
-  grabbedId,
-  onGripPointerDown,
-  onGripKeyDown,
+  onReorder,
   ...rowActions
 }: TaskListProps) {
   const listOf = (task: Task) => (task.list_id ? listById.get(task.list_id) : undefined)
 
+  const ids = useMemo(() => tasks.map((task) => task.id), [tasks])
+  const byId = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks])
+  const labelOf = useCallback((id: string) => byId.get(id)?.title ?? 'Tâche', [byId])
+
+  /** Les propriétés communes à une ligne, quelle que soit sa largeur. */
+  const rowPropsFor = (task: Task) => ({
+    ...rowActions,
+    task,
+    objectiveSlot: objectiveSlotOf(task),
+    list: listOf(task),
+    age: ageOf(task) ?? undefined,
+    donePhase: donePhaseFor(task.id),
+  })
+
   return (
     <>
-      <ul className="hidden flex-col lg:flex">
-        {tasks.map((task, index) => {
-          const header = grouped ? headerBefore(task, tasks[index - 1]) : null
-
+      <SortableContainer
+        ids={ids}
+        labelOf={labelOf}
+        onReorder={onReorder}
+        disabled={!canDrag}
+        renderOverlay={(id) => {
+          const task = byId.get(id)
+          if (!task) return null
+          // Un `<li>` hors d'un `<ul>` est invalide : l'enveloppe est obligatoire,
+          // et c'est elle qui porte l'ombre décollant la ligne du reste.
           return (
-            <Fragment key={task.id}>
-              {header && (
-                <li
-                  aria-hidden
-                  className={cn(
-                    'px-1 pb-1.5 text-[9.5px] font-semibold tracking-[1.3px] text-ink-muted',
-                    index === 0 ? 'pt-1' : 'pt-4',
-                  )}
-                >
-                  {header}
-                </li>
-              )}
-              <TaskListRow
-                {...rowActions}
-                task={task}
-                objectiveSlot={objectiveSlotOf(task)}
-                list={listOf(task)}
-                age={ageOf(task) ?? undefined}
-                canDrag={canDrag}
-                dragging={dragId === task.id}
-                grabbed={grabbedId === task.id}
-                donePhase={donePhaseFor(task.id)}
-                onGripPointerDown={onGripPointerDown}
-                onGripKeyDown={onGripKeyDown}
-              />
-            </Fragment>
+            <ul className="rounded-lg bg-surface shadow-modal">
+              <TaskListRow {...rowPropsFor(task)} canDrag={false} />
+            </ul>
           )
-        })}
-      </ul>
+        }}
+      >
+        {(order) => (
+          <ul className="hidden flex-col lg:flex">
+            {order.map((id, index) => {
+              const task = byId.get(id)
+              if (!task) return null
+              // L'en-tête se calcule sur l'ordre AFFICHÉ, pas sur `tasks` : les
+              // deux divergent le temps qu'un déplacement remonte.
+              const previous = index > 0 ? byId.get(order[index - 1]!) : undefined
+              const header = grouped ? headerBefore(task, previous) : null
 
-      <ul className="flex flex-col lg:hidden">
-        {tasks.map((task, index) => {
-          const header = grouped ? headerBefore(task, tasks[index - 1]) : null
-
-          return (
-            <Fragment key={task.id}>
-              {header && (
-                <li
-                  aria-hidden
-                  className={cn(
-                    'px-3.5 pb-1 text-[9.5px] font-semibold tracking-[1.3px] text-ink-muted',
-                    index === 0 ? 'pt-1' : 'pt-3.5',
+              return (
+                <Fragment key={id}>
+                  {header && (
+                    <li
+                      aria-hidden
+                      className={cn(
+                        'px-1 pb-1.5 text-[9.5px] font-semibold tracking-[1.3px] text-ink-muted',
+                        index === 0 ? 'pt-1' : 'pt-4',
+                      )}
+                    >
+                      {header}
+                    </li>
                   )}
-                >
-                  {header}
-                </li>
-              )}
+                  <SortableTaskRow
+                    {...rowPropsFor(task)}
+                    canDrag={canDrag}
+                    disabled={!canDrag}
+                  />
+                </Fragment>
+              )
+            })}
+          </ul>
+        )}
+      </SortableContainer>
+
+      <SortableContainer
+        ids={ids}
+        labelOf={labelOf}
+        onReorder={onReorder}
+        disabled={!canDrag}
+        renderOverlay={(id) => {
+          const task = byId.get(id)
+          if (!task) return null
+          return (
+            <ul className="rounded-lg bg-surface shadow-modal">
               <TaskRowCompact
                 task={task}
                 objectiveSlot={objectiveSlotOf(task)}
@@ -141,10 +168,49 @@ export function TaskList({
                 onToggle={rowActions.onToggle}
                 onOpen={rowActions.onOpen}
               />
-            </Fragment>
+            </ul>
           )
-        })}
-      </ul>
+        }}
+      >
+        {(order) => (
+          <ul className="flex flex-col lg:hidden">
+            {order.map((id, index) => {
+              const task = byId.get(id)
+              if (!task) return null
+              const previous = index > 0 ? byId.get(order[index - 1]!) : undefined
+              const header = grouped ? headerBefore(task, previous) : null
+
+              return (
+                <Fragment key={id}>
+                  {header && (
+                    <li
+                      aria-hidden
+                      className={cn(
+                        'px-3.5 pb-1 text-[9.5px] font-semibold tracking-[1.3px] text-ink-muted',
+                        index === 0 ? 'pt-1' : 'pt-3.5',
+                      )}
+                    >
+                      {header}
+                    </li>
+                  )}
+                  <SortableTaskRowCompact
+                    task={task}
+                    objectiveSlot={objectiveSlotOf(task)}
+                    list={listOf(task)}
+                    age={ageOf(task) ?? undefined}
+                    donePhase={donePhaseFor(task.id)}
+                    reducedMotion={rowActions.reducedMotion}
+                    onToggle={rowActions.onToggle}
+                    onOpen={rowActions.onOpen}
+                    canDrag={canDrag}
+                    disabled={!canDrag}
+                  />
+                </Fragment>
+              )
+            })}
+          </ul>
+        )}
+      </SortableContainer>
     </>
   )
 }

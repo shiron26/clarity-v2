@@ -108,13 +108,60 @@ Le détail vit dans les commentaires des migrations (`supabase/migrations/`). R�
 - `src/components/` = ce que plusieurs features utilisent : `ui/` (primitives du
   design system : `Button`, `Field`, `Checkbox`, `EmptyState`…), `icons/` (SVG trait
   fin, un fichier par icône), `brand/` (`Logo`), `layout/` (`AppShell`, `Sidebar`,
-  barres mobiles), `objectives/` (`ObjectiveCard`, `ObjectiveHeatmap`, `ProgressRing`
+  barres mobiles), `dnd/` (le glisser-déposer, partagé par les tâches, les listes et
+  la grille d'accueil), `objectives/` (`ObjectiveCard`, `ObjectiveHeatmap`, `ProgressRing`
   — partagés par le dashboard et l'écran Objectifs). Un composant qui ne sert qu'à une
   feature reste dans la feature. **Un composant partagé ne consomme jamais le contexte
   d'une feature** : `ObjectiveCard` reçoit `privacy` / `showMilestones` en props, c'est
   ce qui lui permet de servir deux écrans.
 - Pas de barrel files (`index.ts` de re-export) : imports directs.
 - Un composant « page » par route, dans `features/*/pages/`.
+
+**Les widgets du dashboard font exception à la règle « la page fetche, les blocs sont
+muets »** (`src/features/home/widgets/`). Un widget est optionnel, duplicable et
+réordonnable : la page ne peut pas charger pour un widget qui n'est peut-être pas monté.
+Il est donc **autonome pour ses données** (sa query, son état vide, son erreur inline) et
+**dépendant de la page pour les interactions** (`DashboardContext` : cocher une tâche dans
+un widget allume la carte d'objectif dans un autre, ce qui exige une seule séquence de
+complétion). Les queries se dédoublonnent d'elles-mêmes — mêmes keys que les autres
+écrans, donc aucun appel réseau supplémentaire ; c'est ce qui rend l'autonomie gratuite.
+
+La disposition (ordre, largeur ⅓/⅔/plein, instances) vit dans `dashboardLayout.ts`,
+**client-only** comme les préférences qu'elle remplace, dans un format **versionné** —
+c'est ce qui permet de reprendre une disposition ancienne une fois, sans faire revenir à
+chaque rechargement un widget que l'utilisateur vient de retirer. Quatre règles qui ne se
+devinent pas :
+
+- une disposition lue du stockage est **toujours validée** : un widget retiré du code, une
+  largeur bricolée, un aide-mémoire de nature inconnue ne doivent jamais produire une
+  erreur à l'écran, seulement disparaître ;
+- **un widget ne rend jamais `null`** — son enveloppe occuperait quand même sa cellule et
+  laisserait un trou. Taire un widget est une décision de la PAGE, qui passe son
+  identifiant dans `hidden` à `DashboardGrid` (le rituel se tait ainsi tant qu'un bilan
+  attend), et ce filtre ne s'applique pas en mode Organiser ;
+- **les largeurs se dérivent, elles ne se déclarent pas** : `spansOf()` rend les trois
+  largeurs à un widget `mobile: true`, et seulement ⅔ et plein à un widget qu'on masque sur
+  téléphone. Un widget qui tient sur 390 px tient dans un tiers d'écran. Corollaire : un
+  widget large doit se replier sur sa **largeur réelle** (`span === 1`) et pas seulement
+  sur le point de rupture, sinon il est illisible posé sur un tiers de grand écran ;
+- **la bande d'objectifs et le bilan de trimestre sont épinglés**, hors grille. La première
+  est l'identité de l'écran, le second se périme et ne se rattrape pas. Tout le reste,
+  rituel compris, se déplace et se retire ;
+- **les cartes d'une même ligne ont la même hauteur** : la grille n'aligne pas sur le haut
+  (pas d'`items-start`) et `WidgetCard` prend `h-full`. Avec un plafond, sinon une liste de
+  trente lignes étirerait ses voisines sur tout l'écran — et donc un corps en
+  `overflow-y-auto`, sans quoi le contenu dépasserait par-dessus la ligne suivante. Un
+  champ de capture se pose en bas de la carte étirée (`mt-auto`) plutôt que de flotter au
+  milieu du vide.
+
+Un identifiant de widget qui disparaît se traite dans `LEGACY_IDS` (alias vers son
+remplaçant) plutôt qu'en laissant `sanitize` l'effacer : « Aujourd'hui » a fondu dans
+« Votre semaine », et sans alias les comptes qui l'avaient posé auraient simplement perdu
+leurs tâches du jour. Un alias suppose un `dedupe` derrière lui, sinon une disposition qui
+portait les deux se retrouve avec deux fois le même widget. Et `dashboardLayout.ts` ne doit
+**rien importer du registre** : le registre importe déjà le modèle, et le cycle rend un
+écran blanc (`Cannot access '…' before initialization`) — d'où `isDuplicable()` du côté du
+modèle.
 
 ### Style — Tailwind d'abord
 
@@ -140,9 +187,58 @@ Le détail vit dans les commentaires des migrations (`supabase/migrations/`). R�
   ne porte qu'un mot : parfait pour une échelle qu'on lit d'un coup (1 à 7 séances,
   cinq récurrences), inutilisable quand il n'y a que deux réponses, où le choix
   mérite une phrase d'explication que seule une carte peut porter.
+- **Seconde et dernière exception au « pas de style inline » : le `transform` et la
+  `transition` d'un élément en cours de glissement.** Ils changent à chaque image,
+  aucune classe ne peut les exprimer. Ils sortent **uniquement** de
+  `useSortableItem` (`src/components/dnd/`), via `CSS.Translate.toString()` de
+  `@dnd-kit/utilities` ; un composant les reçoit en objet opaque et les fusionne
+  avec ses propres couleurs, il ne les écrit jamais lui-même.
 - Composer les classes avec `cn()` (`src/lib/cn.ts`). Toute nouvelle taille `--text-*`
   ou ombre `--shadow-*` doit être déclarée dans `extendTailwindMerge` de ce fichier,
   sinon tailwind-merge la prend pour une couleur et écrase la vraie.
+
+### Réordonnancement
+
+Tout glissement passe par **`@dnd-kit`** et par `src/components/dnd/`. Il n'y en a
+pas de deuxième implémentation, et il n'y en a plus de maison : `useDragOrder.ts`
+réagençait à `elementFromPoint`, sans copie qui suit le pointeur ni animation des
+voisins, et il fallait le recâbler à la main dans chaque écran.
+
+- `SortableContainer` porte le `DndContext`, les capteurs, la détection de
+  collision, les annonces et la copie qui suit le pointeur. Une surface = un
+  conteneur. **Deux rendus de la même liste = deux conteneurs** : l'écran Tâches
+  monte sa version desktop et sa version mobile en même temps, et deux éléments
+  déplaçables ne peuvent pas partager un identifiant dans un seul contexte.
+- `useSortableItem` est le **seul appelant de `useSortable`** du dépôt. Un
+  composant réutilisé hors glissement ne l'appelle jamais lui-même : `TaskListRow`
+  sert aussi la section « en retard », rendue hors de tout contexte, d'où les
+  enveloppes `SortableTaskRow` / `SortableTaskRowCompact` / `SortableWidgetCell`
+  qui isolent le hook.
+- **La poignée est obligatoire et unique** (`DragHandle`). C'est son `touch-none`
+  qui empêche le navigateur de défiler depuis ce point, et donc ce qui permet de se
+  passer d'un délai d'appui long au doigt. Saisir une ligne entière exigerait au
+  contraire un `TouchSensor` avec `delay`.
+- **Le chemin clavier vient du `KeyboardSensor`**, pas de nous : Espace ou Entrée
+  pour saisir, flèches pour déplacer, Espace ou Entrée pour déposer, Échap pour
+  annuler. Les annonces françaises et les instructions vivent dans
+  `dndAccessibility.ts` et nulle part ailleurs. **Ne jamais ajouter d'`aria-live`
+  maison à côté** : dnd-kit rend déjà sa région live, et tout doublon fait lire
+  chaque déplacement deux fois.
+- Deux dispositions, et le choix n'est pas cosmétique. `layout="list"` laisse
+  `verticalListSortingStrategy` calculer l'aperçu. `layout="grid"` **réagence pour
+  de vrai** pendant le geste (`onDragOver` + `animateLayoutChanges` forcé), parce
+  que les cellules de l'accueil font un tiers, deux tiers ou toute la largeur :
+  une stratégie qui permute des rectangles supposés identiques y poserait les
+  cartes sur l'empreinte de leurs voisines.
+- **Le rang annoncé se calcule dans les gestionnaires, jamais depuis l'ordre
+  affiché.** La liste ne bouge qu'au dépôt, la grille s'est déjà réagencée : aucune
+  des deux lectures ne vaut pour l'autre. `SortableContainer` tient donc un
+  `rankRef`, et c'est fiable parce que dnd-kit appelle toujours le gestionnaire de
+  props **avant** les annonces.
+- La persistance ne change pas : `useReorderTasks` / `useReorderLists`
+  (`{ orderedIds, positions }`, où `positions` porte les positions **serveur
+  d'avant le geste**, parce que leur `onMutate` a déjà réécrit le cache), et
+  `setOrder` du `DashboardLayoutProvider` pour l'accueil, qui reste client-only.
 
 ### Données serveur
 
@@ -309,6 +405,33 @@ le texte est le seul accompagnement dont dispose l'utilisateur. Il est donc
   token est déjà frais, en redemander un minte un `iat` encore plus « futur ». Et
   c'est inutile même pour un token réellement expiré — chaque tentative re-résout
   son bearer via `auth.getSession()`, qui rafraîchit tout seul.
+- **Échap pendant un déplacement au clavier fermait la modale.** Le
+  `KeyboardSensor` de dnd-kit annule bien sur Échap, mais il écoute `document` en
+  phase de **bullage** et ne s'y abonne qu'au début du geste : l'écouteur de
+  `Modal`, posé à l'ouverture de la feuille, passe donc avant lui. Il ne suffisait
+  pas que `Modal` ignore un évènement `defaultPrevented`, puisqu'à ce moment-là il
+  ne l'était pas encore. La paire qui fonctionne : `SortableContainer` marque la
+  touche en phase de **capture** tant qu'un geste est actif (sans couper la
+  propagation, sinon dnd-kit ne la recevrait jamais), et `Modal` se tait devant un
+  évènement déjà traité. Toute nouvelle interception clavier globale doit faire
+  pareil.
+- **Au clavier, en grille, les flèches ne sortaient pas de leur case.** Sans
+  coordonnées de pointeur, la cible se déduit des seuls rectangles : celui de la
+  carte déplacée, plus étroit, restait toujours le plus proche de lui-même dès que
+  la voisine visée était plus large (un tiers contre pleine largeur). D'où
+  `gridCollision` (`src/components/dnd/SortableContainer.tsx`), qui écarte la carte
+  déplacée de la comparaison **et seulement au clavier** : à la souris elle doit
+  rester candidate, sinon la grille se réagence dès le premier pixel. Le symptôme
+  était muet, l'annonce ne disait rien et rien ne bougeait.
+- **`DragOverlay` est portalisé dans `document.body`.** Un calque `position: fixed`
+  rendu dans le panneau d'une modale dépend de l'absence de `transform` sur ce
+  panneau, garantie aujourd'hui par le seul `animation-fill-mode: backwards` de
+  `src/index.css` et par rien d'autre. Même famille de piège que `Popover`, avec
+  une pièce mobile de plus ; le portail rend la question sans objet. Corollaire :
+  **au repos, un élément déplaçable ne porte aucun `transform` dans le DOM** (c'est
+  pour cela que `useSortableItem` passe par `CSS.Translate.toString(null)`, qui rend
+  `undefined`), sinon chaque ligne deviendrait le bloc conteneur du `Popover` de sa
+  propre échéance.
 - TanStack Query **met les retries en pause dans un onglet hors ligne**
   (`networkMode: 'online'`) et les reprend au retour du réseau. Attendu — mais cela
   fausse tout test de retry piloté depuis un onglet d'automatisation.

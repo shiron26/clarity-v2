@@ -162,6 +162,11 @@ export function Modal({
     if (!open) return
 
     function onKeyDown(e: KeyboardEvent) {
+      // Échap annule un déplacement dnd-kit avant de remonter jusqu'ici : le
+      // `KeyboardSensor` a déjà consommé la touche, mais `preventDefault` n'arrête
+      // pas la propagation. Sans ce garde, annuler un déplacement refermerait la
+      // feuille par-dessus, et l'on perdrait le contexte pour rien.
+      if (e.defaultPrevented) return
       if (e.key === 'Escape') {
         requestCloseRef.current()
         return

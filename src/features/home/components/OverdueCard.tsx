@@ -14,14 +14,14 @@ type OverdueCardProps = {
   reducedMotion?: boolean
 }
 
-// Les tâches en retard vivent dans une section distincte de « Aujourd'hui »
-// (SPEC §5) — jamais mélangées à la liste du jour, mais posées à côté d'elle sur
-// la même ligne en desktop.
+// Les tâches en retard vivent dans une section distincte (SPEC §5) — jamais
+// mélangées aux lignes du jour, mais posées à côté d'elles, sur la même ligne en
+// desktop. C'est « Votre semaine » qui les porte depuis la fusion d'« Aujourd'hui ».
 //
-// D'où la même coquille que `TodayBlock` (fond blanc, ombre de carte, titre au
-// même corps) : côte à côte, une carte bordée face à une carte ombrée se lisait
-// comme un oubli. Ce qui distingue le bloc, c'est son titre rouge et le compte
-// entre parenthèses, pas son cadre.
+// D'où la même coquille que les cartes de widget (fond blanc, ombre de carte,
+// titre au même corps) : côte à côte, une carte bordée face à une carte ombrée se
+// lisait comme un oubli. Ce qui distingue le bloc, c'est son titre rouge et le
+// compte entre parenthèses, pas son cadre.
 export function OverdueCard({
   tasks,
   objectives,
@@ -34,20 +34,24 @@ export function OverdueCard({
   if (tasks.length === 0) return null
 
   return (
-    <section className="min-w-0 rounded-2xl bg-surface p-5 shadow-card">
-      <h2 className="mb-1.5 text-card font-semibold text-danger">
+    <section className="flex h-full max-h-[34rem] min-w-0 flex-col rounded-2xl bg-surface p-5 shadow-card">
+      <h2 className="mb-1.5 shrink-0 text-card font-semibold text-danger">
         En retard ({tasks.length})
       </h2>
-      <TaskRowList
-        tasks={tasks}
-        objectives={objectives}
-        lists={lists}
-        onToggle={onToggle}
-        onToggleImportant={onToggleImportant}
-        showDueDate
-        donePhaseFor={donePhaseFor}
-        reducedMotion={reducedMotion}
-      />
+      {/* Même plafond que les cartes de widget : au-delà, le retard défile dans sa
+          carte plutôt que d'étirer sa voisine. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <TaskRowList
+          tasks={tasks}
+          objectives={objectives}
+          lists={lists}
+          onToggle={onToggle}
+          onToggleImportant={onToggleImportant}
+          showDueDate
+          donePhaseFor={donePhaseFor}
+          reducedMotion={reducedMotion}
+        />
+      </div>
     </section>
   )
 }

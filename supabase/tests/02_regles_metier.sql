@@ -1153,4 +1153,103 @@ begin
   end if;
 end $$;
 
+-- ===========================================================================
+-- 10. Aide-mémoire : les trois listes semées à l'inscription
+-- ===========================================================================
+
+do $$
+declare
+  ua uuid := '00000000-0000-0000-0000-00000000000a';
+  ub uuid := '00000000-0000-0000-0000-00000000000b';
+  v_count int;
+  v_name text;
+  v_space uuid;
+  v_list uuid;
+begin
+  perform set_config('request.jwt.claims',
+    '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}', true);
+
+  -- Le trigger d'inscription a semé les trois listes, et leurs noms se déchiffrent.
+  select count(*) into v_count from public.list where kind <> 'task';
+  if v_count <> 3 then raise exception 'FAIL: % aide-mémoire au lieu de 3', v_count; end if;
+  select name into v_name from public.list where kind = 'courses';
+  if v_name <> 'Courses' then raise exception 'FAIL: nom déchiffré « % »', v_name; end if;
+  raise notice 'OK: les trois aide-mémoire sont semés à l''inscription';
+
+  -- Le semis est rejouable : c'est l'index partiel qui l'assure, et c'est ce qui
+  -- autorise le backfill à croiser le trigger sans dégât.
+  perform private.seed_memo_lists(ua);
+  select count(*) into v_count from public.list where kind <> 'task';
+  if v_count <> 3 then raise exception 'FAIL: le semis a dupliqué (%)', v_count; end if;
+  raise notice 'OK: le semis est idempotent';
+
+  -- Le client ne crée pas d'aide-mémoire : il n'y a pas d'écran pour départager
+  -- deux « Courses ».
+  begin
+    insert into public.list (user_id, kind, name) values (ua, 'courses', 'Faux');
+    raise exception 'FAIL: création d''un aide-mémoire acceptée';
+  exception when raise_exception then
+    if sqlerrm like '%list_kind_not_allowed%' then
+      raise notice 'OK: création d''un aide-mémoire refusée';
+    else raise; end if;
+  end;
+
+  -- `kind` est figé : basculer une liste garnie la ferait disparaître de l'écran
+  -- Tâches sans que rien ne le dise.
+  begin
+    update public.list set kind = 'notes' where kind = 'courses';
+    raise exception 'FAIL: kind modifié';
+  exception when raise_exception then
+    if sqlerrm like '%list_kind_immutable%' then
+      raise notice 'OK: kind figé après création';
+    else raise; end if;
+  end;
+
+  -- Indestructible : aucun écran ne le recréerait.
+  begin
+    delete from public.list where kind = 'courses';
+    raise exception 'FAIL: aide-mémoire supprimé';
+  exception when raise_exception then
+    if sqlerrm like '%list_memo_undeletable%' then
+      raise notice 'OK: aide-mémoire indestructible';
+    else raise; end if;
+  end;
+
+  -- Renommer reste libre : seul `kind` est figé.
+  update public.list set name = 'Emplettes' where kind = 'courses';
+  select name into v_name from public.list where kind = 'courses';
+  if v_name <> 'Emplettes' then raise exception 'FAIL: renommage refusé'; end if;
+  raise notice 'OK: un aide-mémoire se renomme';
+
+  -- Une liste ordinaire reste supprimable, et la suppression détache ses tâches.
+  insert into public.list (user_id, name, "position") values (ua, 'Jetable', 9)
+  returning id into v_list;
+  insert into public.task (user_id, list_id, title) values (ua, v_list, 'orpheline');
+  delete from public.list where id = v_list;
+  select count(*) into v_count from public.task where list_id is null and title = 'orpheline';
+  if v_count <> 1 then raise exception 'FAIL: la tâche n''a pas été détachée'; end if;
+  raise notice 'OK: liste ordinaire supprimable, ses tâches détachées';
+
+  -- Étanchéité : B ne voit que les siens.
+  perform set_config('request.jwt.claims',
+    '{"sub":"00000000-0000-0000-0000-00000000000b","role":"authenticated"}', true);
+  select count(*) into v_count from public.list where kind <> 'task';
+  if v_count <> 3 then raise exception 'FAIL: B voit % aide-mémoire', v_count; end if;
+  select name into v_name from public.list where kind = 'courses';
+  if v_name <> 'Courses' then raise exception 'FAIL: B voit le renommage de A'; end if;
+  raise notice 'OK: chacun ne voit que ses aide-mémoire';
+
+  -- Un aide-mémoire est personnel : il n'y a pas de « Courses » d'espace.
+  perform set_config('request.jwt.claims',
+    '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}', true);
+  insert into private.space (name_enc, color) values (private.enc('Studio'), '#e8590c')
+  returning id into v_space;
+  begin
+    insert into private.list (space_id, kind, name_enc) values (v_space, 'courses', private.enc('X'));
+    raise exception 'FAIL: aide-mémoire d''espace accepté';
+  exception when check_violation then
+    raise notice 'OK: un aide-mémoire ne peut pas appartenir à un espace';
+  end;
+end $$;
+
 rollback;

@@ -5,10 +5,13 @@ import type { DonePhase } from '../../../components/tasks/taskDone'
 import type { List } from '../../../hooks/useLists'
 import type { Task } from '../../../hooks/useTasks'
 import { cn } from '../../../lib/cn'
+import type { CSSProperties } from 'react'
 import type { TaskAge } from '../../../lib/taskAge'
 import { taskRowSkin } from '../../../components/tasks/taskRowSkin'
+import { DragHandle } from '../../../components/dnd/DragHandle'
+import type { DragHandleProps } from '../../../components/dnd/useSortableItem'
 
-type TaskRowCompactProps = {
+export type TaskRowCompactProps = {
   task: Task
   objectiveSlot: number | null | undefined
   list: List | undefined
@@ -22,6 +25,13 @@ type TaskRowCompactProps = {
   onToggle: (task: Task) => void
   /** Toucher la ligne ouvre la feuille d'édition (maquette mobile). */
   onOpen: (task: Task) => void
+  /** La poignée n'existe qu'en tri manuel, ici comme en desktop. */
+  canDrag?: boolean
+  dragging?: boolean
+  /** Posés par `SortableTaskRowCompact`, absents dans la section « en retard ». */
+  sortableRef?: (node: HTMLElement | null) => void
+  sortableStyle?: CSSProperties
+  handleProps?: DragHandleProps
 }
 
 /**
@@ -44,6 +54,11 @@ export function TaskRowCompact({
   age,
   onToggle,
   onOpen,
+  canDrag = false,
+  dragging = false,
+  sortableRef,
+  sortableStyle,
+  handleProps,
 }: TaskRowCompactProps) {
   const done = task.completed_at !== null
   const { accent, linked, bursting, doneClasses, style } = taskRowSkin({
@@ -63,14 +78,27 @@ export function TaskRowCompact({
 
   return (
     <li
-      data-task-row={task.id}
+      ref={sortableRef}
       className={cn(
         'flex min-h-11 items-center gap-2.5 py-2.5 pr-2',
         linked ? 'border-l-[3px] pl-3' : 'pl-3.5',
+        dragging && 'opacity-35',
         doneClasses,
       )}
-      style={style}
+      style={{ ...style, ...sortableStyle }}
     >
+      {canDrag && handleProps && (
+        // Marges négatives : la cible tactile fait 32 px sans que la ligne
+        // grandisse. Le doigt posé ici ne fait pas défiler la page (`touch-none`),
+        // ce qui rend tout délai d'appui long inutile.
+        <DragHandle
+          label={`Déplacer ${task.title}`}
+          handleProps={handleProps}
+          active={dragging}
+          className="-my-1 -ml-1 p-2 text-[13px]"
+        />
+      )}
+
       <TaskCheckbox
         done={done}
         title={task.title}

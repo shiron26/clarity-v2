@@ -278,6 +278,7 @@ export type Database = {
           color: string | null
           created_at: string | null
           id: string | null
+          kind: string | null
           name: string | null
           position: number | null
           space_id: string | null
@@ -383,6 +384,7 @@ export type Database = {
           color: string
           created_at: string
           id: string
+          kind: string
           name: string
           position: number
           space_id: string

@@ -1,4 +1,4 @@
-import { useRef, useState, type FocusEvent, type KeyboardEvent, type PointerEvent } from 'react'
+import { useRef, useState, type CSSProperties, type FocusEvent } from 'react'
 import { CalendarIcon } from '../../../components/icons/CalendarIcon'
 import { RepeatIcon } from '../../../components/icons/RepeatIcon'
 import { ListPill } from '../../../components/tasks/ListPill'
@@ -12,11 +12,13 @@ import type { Task } from '../../../hooks/useTasks'
 import { addDays, formatDayMonth, type IsoDate } from '../../../lib/appDate'
 import { cn } from '../../../lib/cn'
 import type { TaskAge } from '../../../lib/taskAge'
-import { DueQuickLinks } from './DueQuickLinks'
+import { DueQuickLinks } from '../../../components/tasks/DueQuickLinks'
 import { taskRowSkin } from '../../../components/tasks/taskRowSkin'
 import { DEFAULT_LIST_COLOR } from '../../../lib/listPalette'
+import { DragHandle } from '../../../components/dnd/DragHandle'
+import type { DragHandleProps } from '../../../components/dnd/useSortableItem'
 
-type TaskListRowProps = {
+export type TaskListRowProps = {
   task: Task
   /** Slot de l'objectif lié : donne sa couleur à la ligne et à la case. */
   objectiveSlot: number | null | undefined
@@ -27,10 +29,8 @@ type TaskListRowProps = {
   today: IsoDate
   /** La poignée n'existe qu'en tri manuel. */
   canDrag: boolean
-  /** Ligne saisie (souris ou clavier) : elle s'efface le temps du déplacement. */
+  /** Ligne saisie : elle s'efface, la copie qui suit le pointeur la remplace. */
   dragging?: boolean
-  /** Mode déplacement au clavier actif sur cette ligne. */
-  grabbed?: boolean
   donePhase?: DonePhase
   reducedMotion?: boolean
   /** « En retard · Hier » — posé par la section du même nom. La ligne n'affiche
@@ -45,8 +45,11 @@ type TaskListRowProps = {
   onPickDue: (task: Task, dueDate: IsoDate | null) => void
   onOpen: (task: Task) => void
   onDelete: (task: Task) => void
-  onGripPointerDown?: (event: PointerEvent<HTMLButtonElement>, task: Task) => void
-  onGripKeyDown?: (event: KeyboardEvent<HTMLButtonElement>, task: Task) => void
+  /** Posés par `SortableTaskRow` — absents partout où la ligne n'est pas
+   *  déplaçable (section « en retard »), qui la rend hors de tout `DndContext`. */
+  sortableRef?: (node: HTMLElement | null) => void
+  sortableStyle?: CSSProperties
+  handleProps?: DragHandleProps
 }
 
 // Les deux actions rapides de fin de ligne : même carré fantôme de 30px, seule
@@ -65,7 +68,6 @@ export function TaskListRow({
   today,
   canDrag,
   dragging = false,
-  grabbed = false,
   donePhase,
   reducedMotion = false,
   overdueLabel,
@@ -76,8 +78,9 @@ export function TaskListRow({
   onPickDue,
   onOpen,
   onDelete,
-  onGripPointerDown,
-  onGripKeyDown,
+  sortableRef,
+  sortableStyle,
+  handleProps,
 }: TaskListRowProps) {
   // Le survol est local à la ligne : le remonter dans l'écran ferait re-rendre
   // toute la liste à chaque passage de souris. `focusWithin` fait entrer le
@@ -119,7 +122,7 @@ export function TaskListRow({
 
   return (
     <li
-      data-task-row={task.id}
+      ref={sortableRef}
       onMouseEnter={() => setRevealed(true)}
       onMouseLeave={() => setRevealed(false)}
       onFocus={() => setRevealed(true)}
@@ -129,27 +132,19 @@ export function TaskListRow({
         'transition-colors duration-[250ms] hover:bg-[#fafaf8]',
         linked ? 'border-l-[3px] pl-3.5' : 'pl-[17px]',
         dragging && 'opacity-35',
-        grabbed && 'bg-primary-soft/60',
         doneClasses,
       )}
-      style={style}
+      // `style` porte la couleur de l'objectif lié, `sortableStyle` le transform
+      // du glissement : deux sources disjointes, et la seconde n'existe que le
+      // temps du geste.
+      style={{ ...style, ...sortableStyle }}
     >
-      {canDrag && (
-        <button
-          type="button"
-          aria-label={`Déplacer ${task.title}`}
-          aria-pressed={grabbed}
-          onPointerDown={(event) => onGripPointerDown?.(event, task)}
-          onKeyDown={(event) => onGripKeyDown?.(event, task)}
-          className={cn(
-            'shrink-0 cursor-grab touch-none px-0.5 text-[12px] leading-none text-border-idle',
-            'transition-colors duration-150 hover:text-ink-muted',
-            'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
-            grabbed && 'cursor-grabbing text-primary',
-          )}
-        >
-          <span aria-hidden>⠿</span>
-        </button>
+      {canDrag && handleProps && (
+        <DragHandle
+          label={`Déplacer ${task.title}`}
+          handleProps={handleProps}
+          active={dragging}
+        />
       )}
 
       <TaskCheckbox

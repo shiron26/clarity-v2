@@ -1,5 +1,5 @@
-import { addDays, type IsoDate } from '../../../lib/appDate'
-import { cn } from '../../../lib/cn'
+import { addDays, type IsoDate } from '../../lib/appDate'
+import { cn } from '../../lib/cn'
 
 type DueQuickLinksProps = {
   value: IsoDate | null
@@ -13,7 +13,11 @@ type DueQuickLinksProps = {
 }
 
 /**
- * Raccourcis d'échéance posés sous une grille de mois. Ils ne dupliquent pas le
+ * Raccourcis d'échéance posés sous une grille de mois.
+ *
+ * Dans `components/` et non dans la feature : l'écran Tâches et le widget « À
+ * trier » du dashboard proposent la même chose, et une feature n'importe jamais
+ * d'une autre. Ils ne dupliquent pas le
  * calendrier : ils donnent les deux ou trois dates qu'on ne veut pas aller chercher
  * à la souris, plus le seul moyen de *retirer* une date — qu'aucune cellule ne peut
  * exprimer.

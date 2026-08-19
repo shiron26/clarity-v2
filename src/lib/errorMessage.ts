@@ -62,6 +62,12 @@ const BUSINESS_RULES: Array<[string, string]> = [
   ['task_objective_fork_space_mismatch', 'Cet objectif appartient à un autre espace.'],
   ['list_write_not_allowed', 'Vous n’avez pas accès à cette liste.'],
   ['list_owner_immutable', 'Une liste ne change pas de propriétaire.'],
+  // Les trois aide-mémoire sont posés par le serveur à l'inscription. Ces règles
+  // gardent un invariant que l'interface n'offre pas d'enfreindre : leur copie
+  // sert au cas où une version du front dérive.
+  ['list_kind_not_allowed', 'Les aide-mémoire sont créés avec votre compte, il n’y en a pas d’autres à ajouter.'],
+  ['list_kind_immutable', 'Une liste ordinaire ne devient pas un aide-mémoire, et l’inverse non plus.'],
+  ['list_memo_undeletable', 'Un aide-mémoire ne se supprime pas. Videz-le, il redevient vierge.'],
   // Reviews. La plupart de ces règles gardent des invariants que l'interface
   // n'offre pas d'enfreindre : leur copie sert au cas où une version du front
   // dérive, jamais au parcours nominal.

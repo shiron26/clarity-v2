@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router'
-import { useLists } from '../../hooks/useLists'
+import { selectTaskLists, useLists } from '../../hooks/useLists'
 import { cn } from '../../lib/cn'
 import { DEFAULT_LIST_COLOR } from '../../lib/listPalette'
 
@@ -14,7 +14,9 @@ const ITEM =
 
 export function SidebarTaskSubnav() {
   const location = useLocation()
-  const lists = useLists().data ?? []
+  // Les aide-mémoire ne paraissent pas ici : ils vivent dans leur widget
+  // d'accueil, pas dans un écran fait pour ce qui a une échéance.
+  const lists = selectTaskLists(useLists().data)
 
   // `NavLink` ignore la query string dans son `isActive` : toutes les entrées
   // seraient actives en même temps. On compare donc nous-mêmes.

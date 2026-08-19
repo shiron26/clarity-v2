@@ -20,7 +20,7 @@ import {
   recurrenceSummary,
   type RecurrencePreset,
 } from '../../../lib/recurrence'
-import { DueQuickLinks } from './DueQuickLinks'
+import { DueQuickLinks } from '../../../components/tasks/DueQuickLinks'
 import { ListPills } from './ListPills'
 import { ObjectivePills } from './ObjectivePills'
 import { RecurrenceEditor } from './RecurrenceEditor'

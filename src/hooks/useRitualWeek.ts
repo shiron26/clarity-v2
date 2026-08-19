@@ -34,6 +34,12 @@ export type RitualState = {
   pending: RitualWeek | null
   /** Ouverture du prochain rituel — ce qu'on affiche quand `pending` est null. */
   nextOpenAt: string | undefined
+  /**
+   * La semaine précédente et sa session, validée ou non. Sa donnée est déjà
+   * chargée pour départager le candidat : l'exposer ne coûte pas une query de
+   * plus, et l'encart peut dire « semaine du 10 août : notée ».
+   */
+  previous: RitualWeek | null
   isPending: boolean
   error: Error | null
 }
@@ -96,6 +102,14 @@ export function useRitualWeek(): RitualState {
     pending,
     // La semaine en cours n'est pas encore ouverte → c'est elle qu'on annonce.
     nextOpenAt: currentOpening?.isOpen ? undefined : currentOpening?.openAt,
+    previous:
+      previous && weekStart
+        ? {
+            week: previous,
+            start: addDays(weekStart, -7),
+            review: previousReviewQuery.data ?? undefined,
+          }
+        : null,
     isPending: todayQuery.isPending || openingsQuery.isPending || profileQuery.isPending,
     error:
       todayQuery.error ??

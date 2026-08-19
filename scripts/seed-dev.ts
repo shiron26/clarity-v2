@@ -94,7 +94,11 @@ async function main() {
   // L'onboarding se rejoue à chaque seed : c'est aussi le moyen de le tester.
   await client.from('task').delete().eq('user_id', uid)
   await client.from('objective').delete().eq('user_id', uid)
-  await client.from('list').delete().eq('user_id', uid)
+  // `kind` : les trois aide-mémoire sont semés par le serveur à l'inscription et
+  // refusent la suppression. Sans ce filtre, le trigger lève
+  // `list_memo_undeletable` et l'instruction ENTIÈRE échoue — les listes de dev
+  // ne seraient pas effacées non plus, et le seed les dupliquerait à chaque tour.
+  await client.from('list').delete().eq('user_id', uid).eq('kind', 'task')
   await client.from('profile').update({ onboarded_at: null }).eq('id', uid)
 
   // --- listes ----------------------------------------------------------------
