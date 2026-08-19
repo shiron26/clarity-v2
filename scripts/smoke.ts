@@ -25,12 +25,24 @@ function envOrDotenv(name: string, dotenvName: string): string {
   return v
 }
 
+// Comparaison exacte sur le hostname (pas un test de sous-chaîne sur l'URL
+// entière) : `https://localhost.attacker.tld` ne doit PAS passer pour local.
+function isLocalUrl(u: string): boolean {
+  let hostname: string
+  try {
+    hostname = new URL(u).hostname
+  } catch {
+    return false // URL invalide → jamais considérée locale (échec fermé)
+  }
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
+}
+
 const URL_ = envOrDotenv('SUPABASE_URL', 'VITE_SUPABASE_URL')
 const ANON = envOrDotenv('SUPABASE_ANON_KEY', 'VITE_SUPABASE_ANON_KEY')
 // Service role : contourne rate-limit email + validation DNS du hosted (jamais exposé au front).
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY ?? readDotenv('SUPABASE_SERVICE_ROLE_KEY')
 
-const IS_LOCAL = /127\.0\.0\.1|localhost/.test(URL_)
+const IS_LOCAL = isLocalUrl(URL_)
 
 // Le smoke crée des comptes : sur le hosted il touche des données réelles, et sans
 // SUPABASE_URL explicite il lit .env.local, donc il vise le hosted par défaut. Opt-in

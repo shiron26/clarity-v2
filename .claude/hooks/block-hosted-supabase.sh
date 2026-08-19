@@ -14,11 +14,35 @@ PROJECT_REF='bmmlzydvsfjlfogrgklf'
 cmd=$(jq -r '.tool_input.command // empty')
 [ -z "$cmd" ] && exit 0
 
-# Insensible à la casse et aux espaces multiples, pour que les tests restent lisibles.
-low=$(printf '%s' "$cmd" | tr 'A-Z' 'a-z' | tr -s ' \t\n' ' ')
+# Insensible à la casse et aux espaces multiples, pour que les tests restent
+# lisibles. Les sauts de ligne sont conservés (pas convertis en espace) : ils
+# servent, avec `&&`/`||`/`;`/`|`, à isoler chaque segment de commande.
+low=$(printf '%s' "$cmd" | tr 'A-Z' 'a-z' | tr -s ' \t' ' ')
 
 # `--` : les motifs commençant par `--linked` / `--dry-run` ne sont pas des options de grep.
 m() { printf '%s' "$low" | grep -qE -- "$1"; }
+
+# Découpe `$low` en segments indépendants sur les séparateurs de commande shell
+# (`&&`, `||`, `;`, `|`, saut de ligne). Une exemption (`--dry-run`, `gen types`…)
+# ne vaut que pour le segment où elle apparaît, pas pour toute la ligne : sinon
+# `supabase db reset --linked && supabase gen types --linked` blanchirait le
+# reset parce que `gen types` figure ailleurs sur la même ligne composée.
+#
+# Pas de retrait de commentaires shell ici, volontairement : un retrait par
+# regex ne peut pas distinguer un `#` de commentaire réel d'un `#` littéral à
+# l'intérieur d'une chaîne citée sans un vrai analyseur shell. Une première
+# version le tentait et effaçait, aux yeux de TOUTES les gardes ci-dessous,
+# n'importe quelle commande placée après un `#` cité plus tôt sur la ligne
+# (`echo "a #b" && supabase db push --linked` passait alors inaperçu).
+# Conséquence acceptée en échange : un vrai `db push` seulement maquillé par
+# un commentaire `# --dry-run` en fin de segment reste exempté à tort — un
+# contournement bien plus étroit qu'un effacement générique, et le hook n'est
+# qu'une des trois couches de défense (AGENTS.md).
+segments=()
+while IFS= read -r seg; do
+  [ -n "$seg" ] && segments+=("$seg")
+done < <(printf '%s\n' "$low" | sed -E 's/(&&|\|\||;|\|)/\n/g')
+sm() { printf '%s' "$1" | grep -qE -- "$2"; }
 
 deny() {
   jq -nc --arg r "$1" '{
@@ -56,19 +80,21 @@ $ASK"
 fi
 
 # --- 4. CLI supabase sur le projet lié --------------------------------------
-if m 'supabase .*db push' || m 'run db:push( |$)'; then
-  if ! m '--dry-run|db:push:dry'; then
+for seg in "${segments[@]}"; do
+  if sm "$seg" 'supabase .*db push|run db:push( |$)' && ! sm "$seg" '--dry-run|db:push:dry'; then
     deny "\`db push\` applique les migrations sur le hosted — pas de rollback facile, réservé à l'utilisateur.
   → Un agent valide en local : \`npx supabase db reset\`, puis \`npm run db:push:dry\` au plus.
 $ASK"
   fi
-fi
+done
 
-if m '--linked' && ! m 'gen types|migration list|db dump|db lint|db diff'; then
-  deny "\`--linked\` vise le hosted. Seules les lectures y sont tolérées (gen types, migration list, db dump).
+for seg in "${segments[@]}"; do
+  if sm "$seg" '--linked' && ! sm "$seg" 'gen types|migration list|db dump|db lint|db diff'; then
+    deny "\`--linked\` vise le hosted. Seules les lectures y sont tolérées (gen types, migration list, db dump).
 $LOCAL
 $ASK"
-fi
+  fi
+done
 
 if m 'supabase (.* )?(un)?link( |$)' || m 'supabase (.* )?projects ' \
   || m 'migration repair' || m 'supabase (.* )?secrets ' || m 'functions deploy'; then

@@ -20,5 +20,10 @@ const storageKey = `sb-${new URL(url).hostname.split('.')[0]}-auth-token`
 
 export const supabase = createClient<Database>(url, anonKey, {
   // storage custom : porte le « Rester connecté » (localStorage vs sessionStorage).
-  auth: { storage: authStorage, storageKey },
+  // detectSessionInUrl: false — l'app n'utilise que signUp/signInWithPassword (pas
+  // d'OAuth, de lien magique ni de réinitialisation de mot de passe par email) :
+  // désactiver l'intake implicite de token depuis l'URL ferme un vecteur de
+  // fixation de session (une URL de phishing portant un token ne peut plus faire
+  // adopter une session par la victime).
+  auth: { storage: authStorage, storageKey, detectSessionInUrl: false },
 })

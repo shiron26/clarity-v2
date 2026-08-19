@@ -33,10 +33,22 @@ function env(name: string, dotenvName: string): string {
   return v
 }
 
+// Comparaison exacte sur le hostname (pas un test de sous-chaîne sur l'URL
+// entière) : `https://localhost.attacker.tld` ne doit PAS passer pour local.
+function isLocalUrl(u: string): boolean {
+  let hostname: string
+  try {
+    hostname = new URL(u).hostname
+  } catch {
+    return false // URL invalide → jamais considérée locale (échec fermé)
+  }
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
+}
+
 const URL_ = env('SUPABASE_URL', 'VITE_SUPABASE_URL')
 const ANON = env('SUPABASE_ANON_KEY', 'VITE_SUPABASE_ANON_KEY')
 
-if (!/127\.0\.0\.1|localhost/.test(URL_)) {
+if (!isLocalUrl(URL_)) {
   throw new Error(
     `seed:dev ne s'exécute que contre la stack locale (URL reçue : ${URL_}).\n` +
       'Lancer `npx supabase start`, ou supprimer la variable pointant vers le hosted.',
