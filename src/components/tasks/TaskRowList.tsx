@@ -3,9 +3,13 @@ import { TaskRow } from './TaskRow'
 import type { List } from '../../hooks/useLists'
 import type { Objective } from '../../hooks/useObjectives'
 import type { Task } from '../../hooks/useTasks'
+import type { IsoDate } from '../../lib/appDate'
 
 export type TaskRowListProps = {
   tasks: Task[]
+  /** Relayée à chaque ligne : verrouille la case d'une récurrente pas encore
+   *  échue. Inutile dans « En retard ». */
+  today?: IsoDate
   /** Indexés par id : la ligne y retrouve le slot de son objectif et sa liste. */
   objectives: Map<string, Objective>
   lists: Map<string, List>
@@ -26,6 +30,7 @@ export type TaskRowListProps = {
  */
 export function TaskRowList({
   tasks,
+  today,
   objectives,
   lists,
   onToggle,
@@ -40,6 +45,7 @@ export function TaskRowList({
         <TaskRow
           key={task.id}
           task={task}
+          today={today}
           objectiveSlot={task.objective_id ? objectives.get(task.objective_id)?.slot : undefined}
           list={task.list_id ? lists.get(task.list_id) : undefined}
           onToggle={onToggle}

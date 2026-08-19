@@ -11,6 +11,7 @@ import type { List } from '../../../hooks/useLists'
 import type { Task } from '../../../hooks/useTasks'
 import { addDays, formatDayMonth, type IsoDate } from '../../../lib/appDate'
 import { cn } from '../../../lib/cn'
+import { isRecurring, recurrenceLockReason } from '../../../lib/recurrence'
 import type { TaskAge } from '../../../lib/taskAge'
 import { DueQuickLinks } from '../../../components/tasks/DueQuickLinks'
 import { taskRowSkin } from '../../../components/tasks/taskRowSkin'
@@ -152,6 +153,7 @@ export function TaskListRow({
         title={task.title}
         accent={accent}
         bursting={bursting}
+        lockedReason={recurrenceLockReason(task, today)}
         onToggle={() => onToggle(task)}
       />
 
@@ -178,7 +180,7 @@ export function TaskListRow({
 
       {/* La récurrence a quitté le bloc d'actions pour la gauche du titre : c'est
           une propriété de la tâche, pas une action (maquette v2). */}
-      {task.recurrence != null && (
+      {isRecurring(task.recurrence) && (
         <span title="Tâche récurrente" className="flex shrink-0 items-center text-[#b8b8b0]">
           <RepeatIcon className="size-3" />
           <span className="sr-only">Tâche récurrente</span>
@@ -317,11 +319,7 @@ export function TaskListRow({
         <button
           type="button"
           aria-label={`Supprimer ${task.title}`}
-          title={
-            task.recurrence != null
-              ? 'Supprimer — cette tâche est récurrente, la supprimer arrête la série'
-              : 'Supprimer la tâche'
-          }
+          title="Supprimer la tâche"
           onClick={() => onDelete(task)}
           className={cn(ACTION, 'text-[13px] hover:bg-danger-bg hover:text-danger')}
         >

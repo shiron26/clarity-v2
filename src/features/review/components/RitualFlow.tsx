@@ -21,8 +21,10 @@ import {
   useObjectiveSessions,
   useRemoveObjectiveSession,
 } from '../../../hooks/useObjectiveSessions'
-import { useTasks } from '../../../hooks/useTasks'
+import { useTasks, type Task } from '../../../hooks/useTasks'
+import { TaskDeleteDialog } from '../../../components/tasks/TaskDeleteDialog'
 import { useDeleteTask } from '../../../hooks/useTaskMutations'
+import { isRecurring } from '../../../lib/recurrence'
 import { useWeekTaskCount } from '../../../hooks/useWeekTaskCount'
 import { useValidateReview } from '../../../hooks/useReviewMutations'
 import { dataErrorMessage } from '../../../lib/errorMessage'
@@ -83,6 +85,9 @@ export function RitualFlow({
   onFinish,
 }: RitualFlowProps) {
   const [step, setStep] = useState(0)
+  // Abandonner une tâche qui se répète arrêterait la série sans le dire : on
+  // pose la même question qu'ailleurs, au-dessus du deck.
+  const [dropping, setDropping] = useState<Task | null>(null)
 
   const current = STEPS[step]
   const weekEnd = addDays(weekStart, 6)
@@ -285,7 +290,9 @@ export function RitualFlow({
         <RitualTriage
           pool={pool}
           today={today}
-          onDrop={(task) => deleteTask.mutate(task.id)}
+          onDrop={(task) =>
+            isRecurring(task.recurrence) ? setDropping(task) : deleteTask.mutate(task.id)
+          }
           onFinish={handleFinish}
         />
       ) : (
@@ -296,6 +303,11 @@ export function RitualFlow({
           onClose={onFinish}
         />
       )}
+      <TaskDeleteDialog
+        task={dropping}
+        onClose={() => setDropping(null)}
+        elevation="ceremony"
+      />
     </RitualOverlay>
   )
 }

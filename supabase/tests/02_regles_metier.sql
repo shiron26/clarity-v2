@@ -51,6 +51,8 @@ declare
   v_reg_ptarget int;
   v_done timestamptz;
   v_done2 timestamptz;
+  v_task2 uuid;
+  v_list uuid;
 begin
   perform set_config('request.jwt.claims',
     '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}', true);
@@ -545,6 +547,188 @@ begin
   else
     raise exception 'FAIL: occurrence suivante (count=%)', v_count;
   end if;
+
+  -- une occurrence datée dans le futur ne se coche pas : `next_due` part du jour
+  -- de la coche, la suivante retomberait sur la date qu'on vient de cocher
+  insert into public.task (user_id, title, due_date, recurrence)
+  values (ua, 'recurrente future', private.today() + 1, '{"type":"daily","interval":1}')
+  returning id into v_task;
+  begin
+    update public.task set completed_at = now() where id = v_task;
+    raise exception 'FAIL: coche acceptée avant l''échéance';
+  exception when raise_exception then
+    if sqlerrm like '%task_recurrence_future%' then
+      raise notice 'OK: une récurrente ne se coche pas avant son échéance';
+    else raise; end if;
+  end;
+
+  select count(*) into v_count from public.task
+  where user_id = ua and title = 'recurrente future';
+  if v_count = 1 then
+    raise notice 'OK: la coche refusée n''a fabriqué aucune occurrence';
+  else
+    raise exception 'FAIL: occurrences fabriquées (count=%)', v_count;
+  end if;
+
+  -- ... mais une récurrente SANS échéance se coche (elle s'ancre sur aujourd'hui),
+  -- et une non récurrente datée du futur aussi (faire en avance est normal)
+  insert into public.task (user_id, title, recurrence)
+  values (ua, 'recurrente sans date', '{"type":"daily","interval":1}')
+  returning id into v_task;
+  update public.task set completed_at = now() where id = v_task;
+  select count(*) into v_count from public.task
+  where user_id = ua and title = 'recurrente sans date'
+    and completed_at is null and due_date = private.today() + 1;
+  if v_count = 1 then
+    raise notice 'OK: récurrente sans échéance cochable, suivante à demain';
+  else
+    raise exception 'FAIL: récurrente sans échéance (count=%)', v_count;
+  end if;
+
+  insert into public.task (user_id, title, due_date)
+  values (ua, 'simple future', private.today() + 1) returning id into v_task2;
+  update public.task set completed_at = now() where id = v_task2;
+  if (select completed_at from public.task where id = v_task2) is not null then
+    raise notice 'OK: une tâche non récurrente se coche en avance';
+  else
+    raise exception 'FAIL: coche en avance refusée sur une tâche simple';
+  end if;
+
+  -- décocher défait la génération, tant que l'occurrence engendrée est intacte
+  update public.task set completed_at = null where id = v_task;
+  select count(*) into v_count from public.task
+  where user_id = ua and title = 'recurrente sans date';
+  if v_count = 1 then
+    raise notice 'OK: décocher supprime l''occurrence engendrée';
+  else
+    raise exception 'FAIL: occurrence orpheline après décochage (count=%)', v_count;
+  end if;
+
+  -- décoche / recoche : une seule occurrence future, pas deux
+  update public.task set completed_at = now() where id = v_task;
+  update public.task set completed_at = null where id = v_task;
+  update public.task set completed_at = now() where id = v_task;
+  select count(*) into v_count from public.task
+  where user_id = ua and title = 'recurrente sans date' and completed_at is null;
+  if v_count = 1 then
+    raise notice 'OK: décoche/recoche ne duplique pas la série';
+  else
+    raise exception 'FAIL: série dupliquée (count=%)', v_count;
+  end if;
+
+  -- ... mais une occurrence engendrée DÉJÀ COCHÉE n'est pas emportée : elle porte
+  -- du crédit et a peut-être engendré la sienne
+  select id into v_task2 from public.task
+  where user_id = ua and title = 'recurrente sans date' and completed_at is null;
+  update public.task set due_date = private.today() where id = v_task2;
+  update public.task set completed_at = now() where id = v_task2;
+  update public.task set completed_at = null where id = v_task;
+  if exists (select 1 from public.task where id = v_task2) then
+    raise notice 'OK: une occurrence déjà cochée survit au décochage de son parent';
+  else
+    raise exception 'FAIL: occurrence cochée emportée par le décochage';
+  end if;
+
+  -- colonnes recopiées d'une occurrence à la suivante
+  insert into public.list (user_id, name, "position") values (ua, 'Rituels', 0)
+  returning id into v_list;
+  insert into public.task (user_id, list_id, title, description, due_date, is_important, recurrence)
+  values (ua, v_list, 'copie', 'note', private.today(), true, '{"type":"daily","interval":1}')
+  returning id into v_task;
+  update public.task set completed_at = now() where id = v_task;
+  select count(*) into v_count from public.task t
+  where t.user_id = ua and t.title = 'copie' and t.completed_at is null
+    and t.list_id = v_list and t.description = 'note' and t.is_important
+    and t.due_date = private.today() + 1;
+  if v_count = 1 then
+    raise notice 'OK: liste, description et importance suivent l''occurrence';
+  else
+    raise exception 'FAIL: colonnes recopiées (count=%)', v_count;
+  end if;
+  if (select count(*) from private.task where generated_from = v_task) = 1 then
+    raise notice 'OK: l''occurrence engendrée pointe vers celle qui l''a créée';
+  else
+    raise exception 'FAIL: generated_from non renseigné';
+  end if;
+
+  -- =========================================================================
+  -- 8b. Passer son tour : l'échéance avance, la série continue
+  -- =========================================================================
+  -- hebdo du lundi, daté du lundi prochain → lundi d'après
+  v_date := date_trunc('week', private.today()::timestamp)::date + 7;
+  insert into public.task (user_id, title, due_date, recurrence)
+  values (ua, 'saut hebdo', v_date, '{"type":"weekly","interval":1,"weekdays":[1]}')
+  returning id into v_task;
+  if public.skip_task_occurrence(v_task) = v_date + 7 then
+    raise notice 'OK: un lundi sauté revient au lundi suivant';
+  else
+    raise exception 'FAIL: saut hebdo = %', (select due_date from public.task where id = v_task);
+  end if;
+  if (select due_date from public.task where id = v_task) = v_date + 7 then
+    raise notice 'OK: le saut déplace l''échéance de la même ligne';
+  else
+    raise exception 'FAIL: échéance non déplacée';
+  end if;
+
+  -- échéance déjà passée → on repart d'aujourd'hui, pas du retard
+  insert into public.task (user_id, title, due_date, recurrence)
+  values (ua, 'saut en retard', private.today() - 10, '{"type":"daily","interval":2}')
+  returning id into v_task;
+  if public.skip_task_occurrence(v_task) = private.today() + 2 then
+    raise notice 'OK: sauter une échéance passée repart d''aujourd''hui';
+  else
+    raise exception 'FAIL: saut en retard';
+  end if;
+
+  begin
+    perform public.skip_task_occurrence(v_task2);
+    raise exception 'FAIL: saut accepté sur une tâche cochée';
+  exception when raise_exception then
+    if sqlerrm like '%task_already_completed%' then
+      raise notice 'OK: on ne saute pas une occurrence déjà cochée';
+    else raise; end if;
+  end;
+
+  insert into public.task (user_id, title) values (ua, 'sans règle') returning id into v_task2;
+  begin
+    perform public.skip_task_occurrence(v_task2);
+    raise exception 'FAIL: saut accepté sur une tâche non récurrente';
+  exception when raise_exception then
+    if sqlerrm like '%task_not_recurring%' then
+      raise notice 'OK: on ne saute que ce qui se répète';
+    else raise; end if;
+  end;
+
+  -- =========================================================================
+  -- 8c. Forme de la règle : validée en base, plus seulement côté client
+  -- =========================================================================
+  begin
+    insert into public.task (user_id, title, recurrence)
+    values (ua, 'jour hors bornes', '{"type":"weekly","interval":1,"weekdays":[0]}');
+    raise exception 'FAIL: jour de semaine hors 1..7 accepté';
+  exception when check_violation then
+    raise notice 'OK: weekdays hors 1..7 refusé (plus de boucle infinie)';
+  end;
+
+  begin
+    insert into public.task (user_id, title, recurrence)
+    values (ua, 'interval nul', '{"type":"daily","interval":0}');
+    raise exception 'FAIL: interval 0 accepté';
+  exception when check_violation then
+    raise notice 'OK: interval hors 1..366 refusé';
+  end;
+
+  begin
+    insert into public.task (user_id, title, recurrence)
+    values (ua, 'clé parasite', '{"type":"daily","interval":1,"until":"2027-01-01"}');
+    raise exception 'FAIL: clé inconnue acceptée';
+  exception when check_violation then
+    raise notice 'OK: clé inconnue refusée';
+  end;
+
+  insert into public.task (user_id, title, recurrence)
+  values (ua, 'hebdo sans jours', '{"type":"weekly","interval":2}');
+  raise notice 'OK: hebdo sans jours précis accepté';
 
   -- =========================================================================
   -- 9. Reviews : unicité, cohérence de saisie, portée espace

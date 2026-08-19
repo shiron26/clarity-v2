@@ -1,16 +1,18 @@
-// Forme du JSON `task.recurrence`. Ce module est le SEUL endroit qui la connaît,
-// et il doit rester le miroir exact de `private.next_due` (migration 0008) :
-// le serveur ne valide rien, et un motif qu'il ne reconnaît pas arrête la chaîne
-// **en silence** — la tâche récurrente cesse simplement de se régénérer.
-//
-// Ce que le serveur sait faire, et rien d'autre :
+// Forme du JSON `task.recurrence`. Ce module est le SEUL endroit qui la connaît
+// côté client, et il doit rester le miroir exact de `private.next_due` :
 //   { type: 'daily',   interval }              → jour de complétion + interval jours
 //   { type: 'weekly',  interval, weekdays[] }  → prochain jour listé, sinon lundi + 7×interval
 //   { type: 'monthly', interval }              → jour de complétion + interval mois
 //
+// La forme est désormais validée EN BASE (`task_recurrence_shape`, contrainte
+// CHECK) : émettre autre chose ne fige plus la chaîne en silence, cela lève.
+// Ce module reste néanmoins défensif à la lecture, puisqu'il relit du `unknown`.
+//
 // Il n'y a pas d'objet « série » : chaque occurrence porte sa propre règle, et le
-// serveur crée la suivante à la complétion (SPEC §4.3).
+// serveur crée la suivante à la complétion (SPEC §4.3). Une occurrence ne se coche
+// pas avant son échéance — c'est ce qui garantit que la suivante tombe après.
 import type { Json } from '../types/database'
+import type { IsoDate } from './appDate'
 
 export type RecurrenceType = 'daily' | 'weekly' | 'monthly'
 
@@ -58,6 +60,36 @@ export function parseRecurrence(value: unknown): Recurrence | null {
     : []
 
   return weekdays.length > 0 ? { type, interval, weekdays } : { type, interval }
+}
+
+/**
+ * « Cette tâche se répète-t-elle ? » — la question que posent le badge ↻ et le
+ * choix à la suppression.
+ *
+ * `recurrence != null` ne suffit pas : une règle que `parseRecurrence` ne sait pas
+ * lire est une chaîne morte côté serveur (`next_due` rend null), et la ligne
+ * affichait pourtant ↻ pendant que l'éditeur affichait « Aucune ».
+ */
+export function isRecurring(value: unknown): boolean {
+  return parseRecurrence(value) !== null
+}
+
+/**
+ * Pourquoi la case est verrouillée, ou `null` si elle ne l'est pas.
+ *
+ * Le serveur refuse de cocher une occurrence avant son échéance : la suivante se
+ * calcule depuis le jour de la coche, elle retomberait sur la date qu'on vient de
+ * cocher et chaque clic fabriquerait un doublon. La case est donc désactivée avant
+ * l'échéance plutôt que de laisser partir un appel qui reviendra en erreur.
+ */
+export function recurrenceLockReason(
+  task: { recurrence: unknown; due_date: IsoDate | null; completed_at: string | null },
+  today: IsoDate,
+): string | null {
+  if (task.completed_at !== null) return null
+  if (!isRecurring(task.recurrence)) return null
+  if (task.due_date === null || task.due_date <= today) return null
+  return 'Cette tâche se répète : elle ne se coche pas avant son échéance.'
 }
 
 /** N'émet que les clés que le serveur lit — aucune donnée parasite en base. */
@@ -125,6 +157,22 @@ const SIMPLE: Record<RecurrencePreset, string> = {
   weekly: 'Hebdomadaire',
   monthly: 'Mensuel',
   yearly: 'Annuel',
+}
+
+/**
+ * La répétition dite dans une phrase : « tous les jours », « toutes les
+ * semaines », « tous les 3 mois ». `recurrenceSummary` rend un libellé de
+ * bouton (« Hebdomadaire »), qui ne se glisse dans aucune phrase sans jurer.
+ */
+export function recurrenceSentence(rule: Recurrence | null): string {
+  const preset = presetOf(rule)
+  if (preset === 'none') return ''
+
+  const every = intervalOf(rule)
+  // Toujours le pluriel : « tous les jour » n'existe pas, même à l'unité.
+  const unit = unitLabel(preset, 2)
+  const article = preset === 'weekly' ? 'toutes les' : 'tous les'
+  return every === 1 ? `${article} ${unit}` : `${article} ${every} ${unit}`
 }
 
 /**

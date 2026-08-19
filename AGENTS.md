@@ -92,6 +92,14 @@ Le détail vit dans les commentaires des migrations (`supabase/migrations/`). R�
   par `quantityPercent()` (`src/lib/objectiveState.ts`) : la formule naïve `valeur / cible`
   suppose une montée depuis zéro, et elle affichait « cible atteinte » sur un objectif de
   perte de poids le jour de sa création.
+- **La récurrence d'une tâche est une chaîne, pas une série.** La forme de la règle est
+  validée en base (`task_recurrence_shape`, via `private.recurrence_is_valid`) : elle ne
+  l'était que côté client, et un `weekdays` hors 1..7 faisait boucler `next_due` sans fin.
+  `private.next_due` reste l'**unique** calcul de la prochaine échéance, jamais
+  réimplémenté en TS — `public.skip_task_occurrence()` (passer son tour) s'en sert aussi,
+  avec l'échéance sautée pour ancre et non le jour courant. Et **une occurrence ne se coche
+  pas avant son échéance** : sans cette règle la suivante retombait sur la date qu'on
+  venait de cocher, et chaque clic fabriquait un doublon.
 - **Les contraintes en `CASE` se réécrivent, elles ne se complètent pas** : la branche
   `else` avale toute valeur non listée, donc ajouter une valeur de `kind` ou de
   `measure` casse la forme en silence.
@@ -114,6 +122,12 @@ Le détail vit dans les commentaires des migrations (`supabase/migrations/`). R�
   feature reste dans la feature. **Un composant partagé ne consomme jamais le contexte
   d'une feature** : `ObjectiveCard` reçoit `privacy` / `showMilestones` en props, c'est
   ce qui lui permet de servir deux écrans.
+- Une **modale ne s'ouvre pas par-dessus une modale** : deux `Modal` écoutent Échap en
+  même temps. `TaskDeleteDialog` (`src/components/tasks/`) porte le choix « seulement
+  cette fois / toute la série » pour les trois surfaces qui suppriment une ligne (écran
+  Tâches, rituel, aide-mémoire) ; la feuille d'édition, elle, déplie le même choix dans
+  son pied, avec la copie partagée de `taskDeleteCopy.ts` — recopier ce texte, c'est le
+  laisser diverger sur ce que l'utilisateur perd.
 - Pas de barrel files (`index.ts` de re-export) : imports directs.
 - Un composant « page » par route, dans `features/*/pages/`.
 
@@ -432,6 +446,13 @@ le texte est le seul accompagnement dont dispose l'utilisateur. Il est donc
   pour cela que `useSortableItem` passe par `CSS.Translate.toString(null)`, qui rend
   `undefined`), sinon chaque ligne deviendrait le bloc conteneur du `Popover` de sa
   propre échéance.
+- **Décocher défait la génération, à une condition près.** `private.task.generated_from`
+  (colonne privée, absente de la vue) relie une occurrence à celle dont la complétion l'a
+  créée, dans le seul but d'annuler cette complétion : au décochage, l'occurrence engendrée
+  est supprimée **si elle est encore décochée**. Si elle a déjà été cochée, elle porte du
+  crédit et a peut-être engendré la sienne — on n'y touche pas. Sans ce lien, décocher puis
+  recocher laissait deux tâches futures, et N cycles en laissaient N. C'est le seul lien
+  entre occurrences : il ne fait pas une « série » (SPEC §4.3 amendée).
 - TanStack Query **met les retries en pause dans un onglet hors ligne**
   (`networkMode: 'online'`) et les reprend au retour du réseau. Attendu — mais cela
   fausse tout test de retry piloté depuis un onglet d'automatisation.

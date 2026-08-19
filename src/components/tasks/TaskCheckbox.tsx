@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from 'react'
+import { useId, useMemo, type CSSProperties } from 'react'
 import { cn } from '../../lib/cn'
 import { CheckIcon } from '../icons/CheckIcon'
 
@@ -16,6 +16,13 @@ type TaskCheckboxProps = {
   compact?: boolean
   /** Joue le rebond de la case et la gerbe de particules. */
   bursting?: boolean
+  /**
+   * Pourquoi la case ne se coche pas encore. Renseignée, elle désactive le bouton
+   * et donne sa raison — une case morte sans explication se lit comme une panne.
+   * Aujourd'hui : une occurrence récurrente avant son échéance
+   * (`recurrenceLockReason`, `src/lib/recurrence.ts`).
+   */
+  lockedReason?: string | null
   className?: string
 }
 
@@ -33,9 +40,12 @@ export function TaskCheckbox({
   accent = null,
   compact = false,
   bursting = false,
+  lockedReason = null,
   className,
 }: TaskCheckboxProps) {
   const fill = accent ?? NEUTRAL
+  const locked = !done && lockedReason !== null
+  const reasonId = useId()
 
   return (
     <span className={cn('relative flex shrink-0', className)}>
@@ -44,13 +54,18 @@ export function TaskCheckbox({
         role="checkbox"
         aria-checked={done}
         aria-label={done ? `Décocher ${title}` : `Cocher ${title}`}
+        aria-describedby={locked ? reasonId : undefined}
+        disabled={locked}
+        title={locked ? lockedReason ?? undefined : undefined}
         onClick={onToggle}
         className={cn(
-          'flex cursor-pointer items-center justify-center border-2 text-white',
+          'flex items-center justify-center border-2 text-white',
+          locked ? 'cursor-not-allowed border-dashed opacity-60' : 'cursor-pointer',
           compact ? 'size-[19px] rounded-[7px]' : 'size-[21px] rounded-sm',
           'transition-[background-color,border-color] duration-150',
           'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
-          !done && !accent && 'border-border-idle hover:border-ink-muted',
+          !done && !accent && 'border-border-idle',
+          !done && !accent && !locked && 'hover:border-ink-muted',
           bursting && 'animate-cb-pop',
         )}
         style={
@@ -63,6 +78,12 @@ export function TaskCheckbox({
       >
         {done && <CheckIcon className={compact ? 'size-2' : 'size-2.5'} />}
       </button>
+
+      {locked && (
+        <span id={reasonId} className="sr-only">
+          {lockedReason}
+        </span>
+      )}
 
       {bursting && <CheckBurst color={fill} />}
     </span>

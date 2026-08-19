@@ -24,8 +24,8 @@ tranche là où le chiffre ne peut pas.
 
 **Clarity ne reporte jamais rien automatiquement.** Un jalon non accompli ne bascule pas au
 trimestre suivant, un objectif non atteint ne se reconduit pas en janvier, une occurrence
-récurrente ne se génère pas tant que la précédente n'est pas cochée. Réécrire est toujours
-un acte volontaire.
+récurrente ne se génère pas tant que la précédente n'est pas cochée, et elle ne se coche
+pas avant son échéance (§4.3). Réécrire est toujours un acte volontaire.
 
 **Deux tempos, jamais mélangés.** Ce qui se joue à la semaine (cadence, tâches, jours
 actifs) et ce qui se joue au trimestre (jalons) sont deux systèmes indépendants qui ne se
@@ -437,13 +437,35 @@ anticipée, pas de job. Supprimer la tâche courante arrête la récurrence.
 - La prochaine échéance se calcule **à partir de la date de complétion**, pas de
   l'échéance : la série se recale sur le comportement réel plutôt que de fabriquer des
   retards en cascade.
+- **Une occurrence ne se coche pas avant son échéance** (`task_recurrence_future`). C'est
+  la conséquence directe du point précédent : cocher aujourd'hui une quotidienne due
+  demain engendrerait une occurrence… demain, soit un doublon de celle qu'on vient de
+  cocher, et chaque clic en refabriquerait une. Cette règle rend l'invariant vrai par
+  construction : la suivante tombe **strictement après** celle qu'on coche. Contrepartie
+  assumée : une tâche faite en avance demande d'abord d'avancer sa date. La règle épargne
+  les tâches sans échéance (qui s'ancrent sur aujourd'hui) et les non récurrentes.
+- La forme de la règle est **validée en base** (`task_recurrence_shape`) : `type` parmi
+  les trois motifs, `interval` entier de 1 à 366, `weekdays` dans 1..7, aucune autre clé.
+  Sans cette contrainte, un `weekdays` hors bornes faisait boucler le calcul sans fin.
+- **Passer son tour** (`skip_task_occurrence`) déplace l'échéance à la suivante, sans rien
+  supprimer ni recréer. C'est ce que choisit l'utilisateur quand il supprime une tâche qui
+  se répète et répond « seulement cette fois ». L'ancre est ici l'échéance sautée, et non
+  le jour courant : un lundi sauté revient au lundi suivant. Une échéance déjà passée
+  repart d'aujourd'hui, sinon la nouvelle occurrence naîtrait en retard.
 - Motifs : quotidien, hebdomadaire, mensuel ; jours précis de la semaine ; toutes les N
   semaines. Pas de RRULE complet.
 - Un mensuel posé le 31 tombe sur le **dernier jour du mois** quand le mois est plus court.
   Conséquence à connaître : comme le calcul repart de la date de complétion, l'ancrage au
   31 est perdu définitivement après un seul passage par février.
 - Sans fin : ni date de terme, ni nombre d'occurrences.
-- Aucun lien entre occurrences, aucune trace de la chaîne.
+- **Un seul lien entre occurrences, et pour une seule raison** : `private.task.generated_from`
+  pointe vers l'occurrence dont la complétion a créé celle-ci. Il existe uniquement pour
+  **défaire cette complétion** : décocher supprime l'occurrence engendrée, à condition
+  qu'elle soit encore décochée. Sans lui, décocher puis recocher laissait deux tâches
+  futures, et N cycles en laissaient N. Ce lien n'est **pas exposé au client** (il n'entre
+  pas dans `public.task`), il ne survit pas à la suppression de son parent
+  (`on delete set null`), et il ne fait pas de la chaîne un objet « série » : il n'y a
+  toujours ni table de séries, ni suppression groupée, ni remontée d'historique.
 - Une série dont l'objectif vient d'être archivé continue de générer, mais le générateur
   crée l'occurrence suivante avec `objective_id = null`. Aucun job n'est nécessaire : la
   règle s'applique d'elle-même à la première occurrence de janvier.

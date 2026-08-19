@@ -1,10 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { findMemoList, useLists } from '../../../hooks/useLists'
 import { useTasks, type Task } from '../../../hooks/useTasks'
 import { useDeleteTask } from '../../../hooks/useTaskMutations'
 import { TaskCheckbox } from '../../../components/tasks/TaskCheckbox'
+import { TaskDeleteDialog } from '../../../components/tasks/TaskDeleteDialog'
 import { MEMO_GLYPH, MEMO_TINT } from './glyphs'
 import { cn } from '../../../lib/cn'
+import { isRecurring } from '../../../lib/recurrence'
 import type { MemoKind } from '../dashboardLayout'
 import { useDashboardCtx } from '../dashboardContext'
 import { WidgetCard, WidgetEmpty } from './WidgetCard'
@@ -41,6 +43,7 @@ export function MemoWidget({ kind }: { kind: MemoKind }) {
 
   const tasksQuery = useTasks('list', { listId: list?.id })
   const deleteTask = useDeleteTask()
+  const [deleting, setDeleting] = useState<Task | null>(null)
 
   const { open, done } = useMemo(() => {
     const rows = tasksQuery.data ?? []
@@ -106,13 +109,21 @@ export function MemoWidget({ kind }: { kind: MemoKind }) {
               key={task.id}
               task={task}
               onToggle={onToggleTask}
-              onDelete={() => deleteTask.mutate(task.id)}
+              onDelete={() =>
+                isRecurring(task.recurrence) && task.completed_at === null
+                  ? setDeleting(task)
+                  : deleteTask.mutate(task.id)
+              }
             />
           ))}
         </div>
       )}
 
       <TaskCapture placeholder={CAPTURE[kind]} listId={list.id} className="mt-auto pt-2" />
+
+      {/* Une récurrente n'a rien à faire dans un aide-mémoire, mais rien ne
+          l'empêche d'y être rangée : la supprimer arrêterait la série. */}
+      <TaskDeleteDialog task={deleting} onClose={() => setDeleting(null)} />
     </WidgetCard>
   )
 }

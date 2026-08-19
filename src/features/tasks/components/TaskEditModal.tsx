@@ -7,7 +7,17 @@ import { Modal } from '../../../components/ui/Modal'
 import { Popover } from '../../../components/ui/Popover'
 import type { List } from '../../../hooks/useLists'
 import type { Objective } from '../../../hooks/useObjectives'
-import { useDeleteTask, useUpdateTask } from '../../../hooks/useTaskMutations'
+import {
+  useDeleteTask,
+  useSkipTaskOccurrence,
+  useUpdateTask,
+} from '../../../hooks/useTaskMutations'
+import {
+  TASK_DELETE_PERMANENT,
+  TASK_SERIES_LABEL,
+  TASK_SKIP_LABEL,
+  taskRepeatIntro,
+} from '../../../components/tasks/taskDeleteCopy'
 import type { Task } from '../../../hooks/useTasks'
 import type { IsoDate } from '../../../lib/appDate'
 import { cn } from '../../../lib/cn'
@@ -51,9 +61,18 @@ const LABEL = SHEET_LABEL
  * « Terminé » ne fait que fermer. Titre et description sont les seuls à attendre
  * le `blur`, pour ne pas partir en rafale de requêtes à chaque frappe.
  */
+// Les boutons de suppression du pied : pleine largeur au doigt, compacts au
+// curseur. Une seule définition, qu'il y ait un bouton ou deux.
+const DELETE_CHOICE = cn(
+  'flex min-h-12 flex-1 shrink-0 cursor-pointer items-center justify-center rounded-panel px-4.5 text-ui font-medium',
+  'sm:min-h-0 sm:flex-none sm:rounded-md sm:px-3.5 sm:py-2.5 sm:text-label',
+  'transition-colors duration-150 focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
+)
+
 export function TaskEditModal({ task, onClose, principals, lists, today }: TaskEditModalProps) {
   const updateTask = useUpdateTask()
   const deleteTask = useDeleteTask()
+  const skipOccurrence = useSkipTaskOccurrence()
   const formId = useId()
   const dueTriggerRef = useRef<HTMLButtonElement>(null)
 
@@ -73,6 +92,9 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
   const preset = presetOf(rule)
   const interval = intervalOf(rule)
   const weekdays = rule?.weekdays ?? []
+  // Le choix « cette fois / la série » n'a de sens que sur une occurrence
+  // ouverte : sur une tâche cochée, la suivante est déjà née.
+  const repeats = rule !== null && task?.completed_at == null
 
   // Sur l'IDENTITÉ de la tâche, pas sur l'objet : le cache en rend un nouveau à
   // chaque invalidation, et l'effet se rejouait alors — cinq `setState` par
@@ -314,9 +336,9 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
           </div>
         )}
 
-        {(updateTask.error || deleteTask.error) && (
+        {(updateTask.error || deleteTask.error || skipOccurrence.error) && (
           <Alert className="mt-3">
-            {dataErrorMessage(updateTask.error ?? deleteTask.error)}
+            {dataErrorMessage(updateTask.error ?? deleteTask.error ?? skipOccurrence.error)}
           </Alert>
         )}
 
@@ -374,33 +396,63 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
           </div>
 
           <div className="flex flex-col gap-2.5 sm:ml-auto sm:flex-row sm:items-center">
-            <button
-              type="button"
-              onClick={() => {
-                if (!confirmingDelete) {
-                  setConfirmingDelete(true)
-                  return
-                }
-                deleteTask.mutate(task.id, { onSuccess: () => (closeRef.current ?? onClose)() })
-              }}
-              className={cn(
-                'order-2 flex min-h-12 flex-1 shrink-0 cursor-pointer items-center justify-center rounded-panel px-4.5 text-ui font-medium',
-                'sm:order-none sm:min-h-0 sm:flex-none sm:rounded-md sm:px-3.5 sm:py-2.5 sm:text-label',
-                'transition-colors duration-150 focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
-                confirmingDelete
-                  ? 'bg-danger-bg text-danger'
-                  : 'text-ink-muted hover:bg-danger-bg hover:text-danger',
-              )}
-            >
-              {confirmingDelete ? 'Confirmer la suppression' : 'Supprimer'}
-            </button>
+            {/* Une feuille ne peut pas ouvrir `TaskDeleteDialog` par-dessus
+                elle-même : deux modales écouteraient Échap. Le choix est donc
+                posé ici, en dépliant le pied — même copie, même conséquences. */}
+            {confirmingDelete && repeats ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    skipOccurrence.mutate(task.id, {
+                      onSuccess: () => (closeRef.current ?? onClose)(),
+                    })
+                  }
+                  className={cn(DELETE_CHOICE, 'order-2 bg-canvas text-ink-2 sm:order-none')}
+                >
+                  {TASK_SKIP_LABEL}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    deleteTask.mutate(task.id, {
+                      onSuccess: () => (closeRef.current ?? onClose)(),
+                    })
+                  }
+                  className={cn(DELETE_CHOICE, 'order-3 bg-danger-bg text-danger sm:order-none')}
+                >
+                  {TASK_SERIES_LABEL}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!confirmingDelete) {
+                    setConfirmingDelete(true)
+                    return
+                  }
+                  deleteTask.mutate(task.id, { onSuccess: () => (closeRef.current ?? onClose)() })
+                }}
+                className={cn(
+                  DELETE_CHOICE,
+                  'order-2 sm:order-none',
+                  confirmingDelete
+                    ? 'bg-danger-bg text-danger'
+                    : 'text-ink-muted hover:bg-danger-bg hover:text-danger',
+                )}
+              >
+                {confirmingDelete ? 'Confirmer la suppression' : 'Supprimer'}
+              </button>
+            )}
 
-            {/* La maquette supprime d'un clic ; la série récurrente s'arrête sans
-                corbeille, donc on garde la confirmation en deux temps. */}
+            {/* La maquette supprime d'un clic ; sans corbeille, on garde la
+                confirmation en deux temps. */}
             {confirmingDelete && (
-              <p className="order-3 text-caption leading-snug text-ink-muted sm:order-none">
-                Définitif, sans corbeille.
-                {task.recurrence != null && ' Cette tâche est récurrente : la série s’arrête.'}
+              <p className="order-4 text-caption leading-snug text-ink-muted sm:order-none">
+                {repeats
+                  ? `${taskRepeatIntro(task.recurrence)} « ${TASK_SERIES_LABEL} » l’arrête pour de bon.`
+                  : TASK_DELETE_PERMANENT}
               </p>
             )}
 

@@ -1,5 +1,6 @@
 import { Alert } from '../../../components/ui/Alert'
 import { TaskCheckbox } from '../../../components/tasks/TaskCheckbox'
+import { recurrenceLockReason } from '../../../lib/recurrence'
 import { useTasks, type Task } from '../../../hooks/useTasks'
 import { useToggleTask } from '../../../hooks/useToggleTask'
 import { dataErrorMessage } from '../../../lib/errorMessage'
@@ -95,6 +96,7 @@ function TaskLine({
         onToggle={readOnly ? () => {} : onToggle}
         accent={accent}
         compact
+        lockedReason={recurrenceLockReason(task, today)}
       />
       <span className={cn('min-w-0 flex-1 truncate text-body text-ink-2')}>{task.title}</span>
       {task.due_date && (
