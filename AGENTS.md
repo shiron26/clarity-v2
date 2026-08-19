@@ -13,6 +13,8 @@ sont **chiffrées côté base** (pgcrypto + Vault). La spécification de référ
 | `npm run typecheck` / `npm run lint` | `tsc -b` / oxlint — les deux doivent passer avant tout commit |
 | `npm run build` | build de production |
 | `npm run smoke` | test bout en bout PostgREST (`scripts/smoke.ts`) |
+| `npm test` / `test:watch` | tests unitaires Vitest sur les fonctions pures (`src/**/*.test.ts`) — aucun prérequis |
+| `npm run test:e2e` / `test:e2e:ui` | tests navigateur Playwright (`e2e/`) — exige la stack locale démarrée |
 | `npm run seed:dev` | jeu de données local (objectifs, jalons, tâches, historique) — refuse de tourner ailleurs qu'en local |
 | `npm run db:migration -- <nom>` | nouvelle migration |
 | `npm run db:push:dry` puis `db:push` | **toujours dry-run d'abord** — pas de rollback facile sur le hosted |
@@ -396,6 +398,69 @@ le texte est le seul accompagnement dont dispose l'utilisateur. Il est donc
 - Accessibilité minimale dès maintenant : labels sur les inputs, `type=` explicite
   sur les boutons, `role="alert"` sur les erreurs. Le design viendra des maquettes,
   la sémantique n'attend pas.
+
+## Tests
+
+Trois suites, et le partage entre elles n'est pas une question de goût :
+
+| Suite | Ce qu'elle couvre |
+|---|---|
+| `supabase/tests/*.sql` | les règles serveur et l'étanchéité du chiffrement |
+| `npm test` (Vitest) | les **fonctions pures** — la matrice de cas, les frontières |
+| `npm run test:e2e` (Playwright) | le **câblage d'un parcours**, une fois par parcours |
+
+> Un test E2E vérifie le câblage d'un parcours, une fois. La **matrice de cas** appartient
+> aux tests unitaires. Un même parcours en douze variantes, c'est 1 test E2E et 11
+> unitaires — sinon la suite passe de quinze secondes à dix minutes et finit désactivée.
+
+Corollaire pratique : les copies de `BUSINESS_RULES` sont presque **intestables en E2E**,
+parce que l'interface garde en amont (4ᵉ jalon inerte, 4ᵉ place désactivée, séance future
+grisée). Elles relèvent d'un test unitaire sur `dataErrorMessage()`.
+
+### Tests unitaires (`src/**/*.test.ts`)
+
+Colocalisés, configurés par `vitest.config.ts` — **séparé de `vite.config.ts`**, qui n'a
+pas à charger VitePWA et Tailwind pour des fonctions pures. Environnement `node` : le seul
+module qui touche au navigateur est `dashboardLayout`, dont le test pose un faux
+`localStorage` en trois lignes plutôt qu'un DOM entier. Pas de globals : chaque fichier
+importe `describe`/`it`/`expect` de `vitest`.
+
+On teste le **contrat exporté**, pas les fonctions privées : `sanitize`, `dedupe` et
+`migrate` se vérifient à travers `readLayout`. Tester une fonction privée fige une
+implémentation.
+
+### Tests end-to-end (`e2e/`)
+
+Playwright, contre **la stack locale exclusivement**. Le détail et les pièges vivent dans
+[e2e/README.md](./e2e/README.md) ; ce qui suit ne se négocie pas.
+
+- **Jamais le hosted.** `e2e/local.ts` lève à l'import si l'URL n'est pas locale, et
+  `webServer.env` écrase les fichiers `.env` (dans Vite, `process.env` gagne) — sans quoi
+  `.env.local`, chargé dans tous les modes, ferait viser le hosted. La clé anon locale est
+  versionnée : c'est le JWT de démonstration public, pas un secret, et **aucun secret
+  GitHub n'est nécessaire au workflow**.
+- **Un compte par worker, jamais par test** : la stack locale plafonne à 30
+  inscriptions/connexions par 5 minutes. La session est injectée par
+  `context.addInitScript` (donc avant le boot de l'app, sinon `ProtectedRoute` a déjà
+  redirigé), et la fixture pose `onboarded_at` comme le fait `useCompleteOnboarding`.
+- **Préparer par l'API, vérifier par l'interface.** Un test de complétion ne doit pas
+  tomber parce que le formulaire de création est cassé ; et une assertion en base
+  testerait la base, plus le produit.
+- **Sélecteurs par rôle, `exact: true` obligatoire** : `getByRole` compare en sous-chaîne,
+  donc « Cocher X » matche aussi « Décocher X ». Les helpers partagés sont dans
+  `e2e/helpers/locators.ts`. Pas de classe CSS, pas de `.first()` pour faire taire le mode
+  strict — plusieurs surfaces sont montées deux fois (desktop + mobile), et l'ambiguïté est
+  réelle.
+- **Aucun `waitForTimeout`.** Les assertions web-first réessaient, ce qui suffit aux ~1,7 s
+  de la séquence de complétion comme au 401 PGRST301 transitoire.
+- **Ne pas forcer `reducedMotion`** dans la config : `useDoneSequence` sort immédiatement
+  sous mouvement réduit, donc ni le flash ni le « pop » de la carte d'objectif ne se
+  produisent — on testerait un autre produit.
+- **Tout test qui crée un objectif le supprime** (`afterEach`) : 3 places principales, 5
+  secondaires, et l'unicité porte sur le chevauchement de fenêtre.
+- **`e2e/helpers/sqlLocal.ts` est réservé aux préconditions temporelles** que l'API ne sait
+  pas poser — antidater `objective.created_at` pour qu'une semaine passée soit passable en
+  revue. Jamais pour vérifier un résultat.
 
 ## Pièges connus (appris en construisant)
 
