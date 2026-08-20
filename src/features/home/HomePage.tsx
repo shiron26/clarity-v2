@@ -142,8 +142,10 @@ function Dashboard() {
 
   // Les queries de l'écran — celles que la PAGE rend. Les widgets portent les
   // leurs et affichent leur propre erreur, sans vider l'accueil pour autant.
-  const queries: QueryLike[] = [todayQuery, objectivesQuery, listsQuery]
-  const { firstError, retrying, onRetry } = useQueriesState(queries, bilan.error)
+  // Les queries du bilan sont dedans, et pas leur erreur agrégée : c'est ce qui
+  // rend le bouton « Réessayer » capable de les relancer.
+  const queries: QueryLike[] = [todayQuery, objectivesQuery, listsQuery, ...bilan.queries]
+  const { firstError, retrying, onRetry } = useQueriesState(queries)
 
   // Seul `today` bloque le rendu : tout le reste en dérive. Les autres queries
   // se dégradent proprement — les ajouter ici ferait clignoter l'écran à chaque
@@ -152,7 +154,12 @@ function Dashboard() {
     return <PageLoading />
   }
 
-  if (todayQuery.isError || !ctx) {
+  // `isLoadingError` et jamais `isError` : TanStack garde `data` quand un
+  // rafraîchissement en arrière-plan échoue, et passe quand même la query en
+  // erreur. Tester `isError` VIDAIT donc l'écran entier au réveil de l'onglet,
+  // alors que la date du serveur était toujours là. Un écran ne se remplace par
+  // un message d'échec que s'il n'a vraiment rien à afficher.
+  if (todayQuery.isLoadingError || !ctx) {
     return (
       <PageError
         title="Impossible de charger le dashboard"

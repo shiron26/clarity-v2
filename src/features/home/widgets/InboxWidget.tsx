@@ -4,6 +4,7 @@ import { useAppDayStart } from '../../../hooks/useAppToday'
 import { useTasks, type Task } from '../../../hooks/useTasks'
 import { selectTaskLists, useLists } from '../../../hooks/useLists'
 import { useUpdateTask } from '../../../hooks/useTaskMutations'
+import { firstLoadError } from '../../../hooks/useQueriesState'
 import { taskAge } from '../../../lib/taskAge'
 import { InboxRow } from './InboxRow'
 import { WIDGET_GLYPH } from './glyphs'
@@ -63,7 +64,7 @@ export function InboxWidget() {
           </Link>
         ) : undefined
       }
-      error={tasksQuery.error ?? dayStartQuery.error ?? listsQuery.error}
+      error={firstLoadError(tasksQuery, dayStartQuery, listsQuery)}
       onRetry={() => void tasksQuery.refetch()}
       retrying={tasksQuery.isFetching}
     >

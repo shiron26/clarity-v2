@@ -158,7 +158,8 @@ export function ObjectivesPage() {
     )
   }
 
-  if (todayQuery.isError) {
+  // `isLoadingError` : un refetch raté par-dessus des données ne vide pas l'écran.
+  if (todayQuery.isLoadingError) {
     return (
       <PageError
         title="Impossible de charger vos objectifs"

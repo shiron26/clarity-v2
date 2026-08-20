@@ -6,6 +6,7 @@ import { NewTaskHost } from '../../features/tasks/NewTaskHost'
 import { MobileTabBar } from './MobileTabBar'
 import { MobileTopBar } from './MobileTopBar'
 import { PrivacyProvider } from './PrivacyProvider'
+import { SyncBanner } from './SyncBanner'
 import { PageBannerSlotContext } from './pageBannerSlot'
 import { Sidebar } from './Sidebar'
 import { TopBarSlotContext } from './topBarSlot'
@@ -24,6 +25,11 @@ export function AppShell() {
     // qui le bascule y vit, et les quatre écrans le lisent. « Masquer » est un
     // état de l'application, pas une préférence d'un écran.
     <PrivacyProvider>
+      {/* La seule surface qui parle de réseau, pour tous les écrans connectés :
+          un écran ne rend plus jamais un bloc rouge parce qu'un rafraîchissement
+          en arrière-plan a raté. Hors des routes auth, qui portent déjà leur
+          propre copie hors ligne dans leurs formulaires. */}
+      <SyncBanner />
       <div className="flex h-dvh bg-canvas">
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">

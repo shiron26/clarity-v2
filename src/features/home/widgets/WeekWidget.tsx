@@ -4,6 +4,7 @@ import { useAppDayStart } from '../../../hooks/useAppToday'
 import { useTasks, type Task } from '../../../hooks/useTasks'
 import { selectTaskLists, useLists } from '../../../hooks/useLists'
 import { useObjectives } from '../../../hooks/useObjectives'
+import { firstLoadError } from '../../../hooks/useQueriesState'
 import { TaskRowList } from '../../../components/tasks/TaskRowList'
 import { objectiveSkin } from '../../../lib/objectivePalette'
 import {
@@ -129,7 +130,7 @@ export function WeekWidget({ span }: { span: WidgetSpan }) {
             Tout voir →
           </Link>
         }
-        error={tasksQuery.error ?? dayStartQuery.error}
+        error={firstLoadError(tasksQuery, dayStartQuery)}
         onRetry={() => void tasksQuery.refetch()}
         retrying={tasksQuery.isFetching}
       >

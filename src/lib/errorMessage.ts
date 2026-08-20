@@ -136,6 +136,10 @@ export function dataErrorMessage(error: unknown): string {
       return 'Cette donnée n’existe plus.'
     case 'conflict':
       return 'Cette modification entre en conflit avec une donnée existante.'
+    case 'businessRule':
+    // Une règle de trigger qu'on n'a pas traduite plus haut : la copie manque
+    // dans `BUSINESS_RULES`. C'est un trou de notre côté, pas une panne, et la
+    // phrase générique est ce qu'on a de moins faux à dire en attendant.
     case 'unknown':
       return 'Une erreur est survenue de notre côté. Réessayez dans un instant.'
   }

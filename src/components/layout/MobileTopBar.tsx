@@ -1,4 +1,5 @@
-import type { Ref } from 'react'
+import { useRef, type Ref } from 'react'
+import { useNavigate } from 'react-router'
 import { useAuth } from '../../features/auth/useAuth'
 import { useProfile } from '../../hooks/useProfile'
 import { Logo } from '../brand/Logo'
@@ -11,14 +12,48 @@ type MobileTopBarProps = {
   actionsRef?: Ref<HTMLDivElement>
 }
 
+/** Assez long pour ne jamais se déclencher en posant le pouce sur l'écran. */
+const LONG_PRESS_MS = 700
+
 export function MobileTopBar({ actionsRef }: MobileTopBarProps) {
   const { signOut } = useAuth()
   const profile = useProfile()
+  const navigate = useNavigate()
+
+  // L'unique porte vers `/diagnostic` en PWA installée : elle n'a pas de barre
+  // d'adresse, et c'est justement là que les pannes du réveil se produisent. Un
+  // appui long sur le logo plutôt qu'une entrée de menu : cet écran n'est pas
+  // une fonction du produit, il ne doit rien coûter à ceux qui n'en ont pas
+  // besoin.
+  const pressTimer = useRef<number | null>(null)
+
+  const startPress = () => {
+    pressTimer.current = window.setTimeout(() => {
+      pressTimer.current = null
+      void navigate('/diagnostic')
+    }, LONG_PRESS_MS)
+  }
+
+  const cancelPress = () => {
+    if (pressTimer.current === null) return
+    window.clearTimeout(pressTimer.current)
+    pressTimer.current = null
+  }
 
   return (
     // pt : 1.375rem d'origine + la zone sûre du haut (encoche / Dynamic Island).
     <header className="flex shrink-0 items-center gap-2.5 px-5 pt-[calc(1.375rem+env(safe-area-inset-top))] pb-3 lg:hidden">
-      <Logo size="sm" />
+      {/* `onContextMenu` : sur iOS, l'appui long ouvre sinon le menu de partage
+          par-dessus la navigation. */}
+      <span
+        onPointerDown={startPress}
+        onPointerUp={cancelPress}
+        onPointerLeave={cancelPress}
+        onPointerCancel={cancelPress}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        <Logo size="sm" />
+      </span>
       <div className="ml-auto flex items-center gap-2">
         {/* Actions de l'écran courant, avant la déconnexion : les remonter ici
             épargne une pleine ligne de barre d'outils sous le logo. */}

@@ -314,10 +314,26 @@ le texte est le seul accompagnement dont dispose l'utilisateur. Il est donc
 - **Classer une erreur passe par `src/lib/queryError.ts`**, jamais à la main. Deux
   pièges de forme : avec `if (error) throw error`, postgrest-js throw un objet nu
   `{ message, details, hint, code }` — pas une instance de `PostgrestError`, et
-  **sans status HTTP** (il reste sur la réponse). Et une panne réseau produit
-  `code: ''`, pas `undefined` : tout test du genre `typeof code === 'string'`
-  range l'offline avec les erreurs métier et le rend non retentable.
-- Les seules erreurs retentables sont `authTransient` (PGRST301) et `offline`.
+  **sans status HTTP** (il reste sur la réponse). Et **`code: ''` (vide) n'est pas
+  `code` absent** : la chaîne vide est posée par le seul `catch` qui entoure le fetch
+  de postgrest-js, c'est donc le signal EXACT d'une requête qui n'a jamais atteint le
+  serveur — réseau, mais aussi toute erreur jetée pendant la résolution du jeton, que
+  supabase-js fait avant de partir. Un `code` absent, lui, signe une réponse HTTP au
+  corps non-JSON (5xx, page de passerelle). Reconnaître le transport à son message
+  (`/^TypeError|FetchError/`) ne marchait que pour la moitié des cas.
+- **Terminal par exception, transitoire par défaut** (`isTerminalError`,
+  `src/lib/retryPolicy.ts`). Ne se retentent pas : `permission`, `notFound`,
+  `conflict`, `authGone`, `businessRule`, et les `PGRST1xx`/`PGRST2xx` (requête
+  malformée, cache de schéma : des bugs de notre côté). **Tout le reste se retente**,
+  `unknown` compris — c'est-à-dire les 5xx, les redémarrages de PostgREST et les
+  timeouts. La politique inverse (une liste blanche du retentable) laissait le
+  fourre-tout `unknown` sans aucune tentative, et un hoquet au réveil de l'onglet se
+  figeait à l'écran jusqu'au rechargement. Backoff exponentiel à **jitter complet** :
+  au réveil, huit queries échouent à la même milliseconde, un délai fixe les ferait
+  retenter en choeur. Seul `authTransient` garde sa fenêtre courte et fixe
+  (`[150, 400, 900, 1200]`) : il attend une horloge, pas un serveur. Les **mutations**
+  restent sur la politique stricte (`retryAuthTransient`) : un insert retenté crée un
+  doublon.
   **Ne jamais répondre à un PGRST301 par un `refreshSession()`** : voir les pièges.
 - Les règles métier des triggers (`slot_full`, `milestone_cap`,
   `objective_archived_read_only`…) arrivent **toutes en `P0001`**, seule la chaîne les
@@ -325,6 +341,46 @@ le texte est le seul accompagnement dont dispose l'utilisateur. Il est donc
   préfixe. Elles sont traduites dans la table `BUSINESS_RULES` de `errorMessage.ts` :
   ajouter une règle serveur, c'est ajouter sa copie ici, sinon l'utilisateur lit
   « une erreur est survenue de notre côté ».
+
+### Réveil et connectivité
+
+Le jeton d'accès vit une heure, et le minuteur qui le renouvelle **ne tourne pas**
+pendant qu'un onglet est gelé ou qu'un téléphone dort. Le retour sur l'application est
+donc le moment le plus fragile de sa vie : jeton expiré, renouvellement en vol, réseau
+mobile qui se réveille, et huit queries périmées relancées d'un coup.
+
+- **La séquence de réveil vit dans `src/lib/appLifecycle.ts`, et nulle part ailleurs.**
+  Elle remplace l'écouteur de `focusManager` de TanStack : session d'abord
+  (`getSession()`, qui renouvelle tout seul un jeton expiré, avec un plafond de 3 s),
+  resynchronisation ensuite. `handleFocus(false)` au départ de l'onglet n'est pas une
+  formalité : `setFocused` ne prévient ses abonnés que sur un **changement**, sans la
+  descente la remontée ne déclencherait rien. `pageshow` avec `persisted` force le
+  cycle, le retour de bfcache ne passant jamais par `hidden`. Le retour du réseau, lui,
+  reste à `onlineManager` : doubler cet écouteur dédoublerait la salve.
+- **Une panne de liaison est un état de l'application, pas un contenu d'écran.**
+  `connectivity.ts` compte les échecs de transport (le premier succès remet à zéro),
+  `useSyncStatus` en dérive `ok` / `syncing` / `offline`, et **`SyncBanner` est la seule
+  surface autorisée à en parler**. Elle ne lit pas `navigator.onLine`, qui répond « en
+  ligne » sur un Wi-Fi sans Internet.
+- **Un écran qui a des données à afficher ne crie pas.** TanStack conserve `data` quand
+  un rafraîchissement en arrière-plan échoue et passe quand même `status: 'error'` :
+  tester `error !== null` faisait rendre « Impossible de charger ces données » par-dessus
+  un écran complet, que rien n'effaçait sans recharger la page. `selectErrorState`
+  (`src/hooks/useQueriesState.ts`) ne montre une erreur que si elle est **terminale** ou
+  s'il n'y a **rien à afficher** (`isLoadingError`) ; `firstLoadError()` porte la même
+  règle pour les widgets. En revanche « Réessayer » relance **tout** ce qui a échoué,
+  affiché ou non. Même règle pour les **sorties anticipées de page** : elles se gardent
+  sur `todayQuery.isLoadingError`, jamais sur `isError`, sinon l'écran entier se
+  remplace par « Impossible de charger le dashboard » alors que la date du serveur est
+  toujours en cache.
+- **Un hook composite expose ses queries, jamais son erreur agrégée**
+  (`usePendingBilan`). Un `Error` seul n'est pas retentable : l'écran n'a alors plus
+  rien à relancer, et le bouton tourne sur une liste vide.
+- **Le journal local (`errorLog.ts`, écran `/diagnostic`) ne reçoit aucune donnée
+  métier.** Le message n'est retenu que pour les classes techniques (transport, réponse
+  non reconnue, auth) : une règle métier ou un conflit d'unicité portent des valeurs de
+  lignes déchiffrées dans leur texte. Même esprit que la règle PWA « aucune réponse
+  PostgREST en cache ». Rien n'en sort de l'appareil : pas de Sentry, pour la même raison.
 
 ### Dates et progression
 

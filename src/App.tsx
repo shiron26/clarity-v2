@@ -5,6 +5,7 @@ import { TooltipProvider } from './components/ui/Tooltip'
 import { LoginPage } from './features/auth/pages/LoginPage'
 import { SignupPage } from './features/auth/pages/SignupPage'
 import { ProtectedRoute } from './features/auth/ProtectedRoute'
+import { DiagnosticPage } from './features/diagnostic/pages/DiagnosticPage'
 import { HomePage } from './features/home/HomePage'
 import { ObjectivesPage } from './features/objectives/pages/ObjectivesPage'
 import { BilanPage } from './features/review/pages/BilanPage'
@@ -41,6 +42,12 @@ function App() {
                 bouton de T2 d'ouvrir T2. `:period` vaut `t1`…`t4` ou `annee` —
                 le trimestre et l'année sont deux cérémonies distinctes. */}
             <Route path="/bilan/:year/:period" element={<BilanPage />} />
+            {/* Écran d'assistance, hors navigation : rien n'y mène dans le
+                produit. On y arrive par son adresse, ou par un appui long sur le
+                logo de la barre mobile — la PWA installée n'a pas de barre
+                d'adresse, et c'est justement là que les pannes du réveil se
+                produisent. */}
+            <Route path="/diagnostic" element={<DiagnosticPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

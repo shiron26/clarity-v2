@@ -21,6 +21,7 @@ import { useQuarterReviews, useReview, type Review } from './useReview'
 import { addDays, quarterOf, year as yearOf, type IsoDate } from '../lib/appDate'
 import { windowEnd } from '../lib/objectiveFeasibility'
 import { openingKey, useReviewOpenings } from './useReviewOpenings'
+import type { QueryLike } from './useQueriesState'
 import type { BilanPeriod } from '../lib/quarterLabels'
 
 export type PendingBilan = {
@@ -34,7 +35,16 @@ export type PendingBilanState = {
   /** Le bilan à faire, ou `null` s'il n'y en a aucun d'ouvert et non validé. */
   pending: PendingBilan | null
   isPending: boolean
-  error: Error | null
+  /**
+   * Les queries, et pas seulement leur première erreur.
+   *
+   * Un hook composite qui ne rendait qu'un `Error` rendait aussi son écran
+   * **inréparable** : `useQueriesState` n'avait rien à relancer, le bouton
+   * « Réessayer » du dashboard tournait sur une liste vide, et seul un
+   * rechargement complet effaçait le bandeau. L'écran a besoin de ce qui a
+   * échoué, pas du résumé de l'échec.
+   */
+  queries: QueryLike[]
 }
 
 export function usePendingBilan(): PendingBilanState {
@@ -87,12 +97,6 @@ export function usePendingBilan(): PendingBilanState {
   return {
     pending,
     isPending: todayQuery.isPending || profileQuery.isPending || openingsQuery.isPending,
-    error:
-      todayQuery.error ??
-      profileQuery.error ??
-      openingsQuery.error ??
-      quarterReviewsQuery.error ??
-      yearReviewQuery.error ??
-      null,
+    queries: [todayQuery, profileQuery, openingsQuery, quarterReviewsQuery, yearReviewQuery],
   }
 }

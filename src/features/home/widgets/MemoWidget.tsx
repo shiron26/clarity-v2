@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { findMemoList, useLists } from '../../../hooks/useLists'
 import { useTasks, type Task } from '../../../hooks/useTasks'
 import { useDeleteTask } from '../../../hooks/useTaskMutations'
+import { firstLoadError } from '../../../hooks/useQueriesState'
 import { TaskCheckbox } from '../../../components/tasks/TaskCheckbox'
 import { TaskDeleteDialog } from '../../../components/tasks/TaskDeleteDialog'
 import { MEMO_GLYPH, MEMO_TINT } from './glyphs'
@@ -59,7 +60,7 @@ export function MemoWidget({ kind }: { kind: MemoKind }) {
         title="Aide-mémoire"
         icon={MEMO_GLYPH[kind]}
         iconColor={MEMO_TINT[kind]}
-        error={listsQuery.error}
+        error={firstLoadError(listsQuery)}
       >
         <WidgetEmpty>
           {listsQuery.isPending ? 'Chargement…' : 'Cet aide-mémoire n’est pas encore là.'}
@@ -96,7 +97,7 @@ export function MemoWidget({ kind }: { kind: MemoKind }) {
           </button>
         ) : undefined
       }
-      error={tasksQuery.error}
+      error={firstLoadError(tasksQuery)}
       onRetry={() => void tasksQuery.refetch()}
       retrying={tasksQuery.isFetching}
     >

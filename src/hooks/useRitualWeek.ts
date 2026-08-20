@@ -20,6 +20,7 @@ import { useProfile } from './useProfile'
 import { useReview, type Review } from './useReview'
 import { openingKey, useReviewOpenings } from './useReviewOpenings'
 import { addDays, isoWeek, startOfWeek, type IsoDate, type IsoWeek } from '../lib/appDate'
+import type { QueryLike } from './useQueriesState'
 
 export type RitualWeek = {
   week: IsoWeek
@@ -41,7 +42,12 @@ export type RitualState = {
    */
   previous: RitualWeek | null
   isPending: boolean
-  error: Error | null
+  /**
+   * Les queries, et pas seulement leur première erreur. Un `Error` seul n'est pas
+   * retentable : l'écran qui l'affiche n'a plus rien à relancer, et son bouton
+   * « Réessayer » tourne sur une liste vide (voir `useQueriesState`).
+   */
+  queries: QueryLike[]
 }
 
 export function useRitualWeek(): RitualState {
@@ -111,12 +117,12 @@ export function useRitualWeek(): RitualState {
           }
         : null,
     isPending: todayQuery.isPending || openingsQuery.isPending || profileQuery.isPending,
-    error:
-      todayQuery.error ??
-      openingsQuery.error ??
-      profileQuery.error ??
-      currentReviewQuery.error ??
-      previousReviewQuery.error ??
-      null,
+    queries: [
+      todayQuery,
+      openingsQuery,
+      profileQuery,
+      currentReviewQuery,
+      previousReviewQuery,
+    ],
   }
 }

@@ -9,23 +9,28 @@
 //  2. Le status HTTP est un champ frère de `error` dans la réponse, il n'arrive
 //     jamais jusqu'ici. Seul GoTrue pose un `status` sur ses erreurs.
 //
-// Et une conséquence contre-intuitive : sur panne réseau, postgrest-js renvoie
-// `code: ''` (chaîne vide), pas `undefined`. Tout prédicat du genre
-// `typeof code === 'string'` classe donc l'offline avec les erreurs métier.
+// Et une conséquence contre-intuitive, qui est aussi le signal le plus utile du
+// fichier : quand le fetch n'aboutit pas, postgrest-js renvoie `code: ''`
+// (chaîne VIDE), là où une erreur venue d'une réponse HTTP porte un vrai code ou
+// pas de champ `code` du tout. Vide et absent ne veulent donc pas dire la même
+// chose, et tout prédicat du genre `typeof code === 'string'` mélange les deux.
 
 export type ErrorKind =
-  /** 401 PGRST301 : JWT non vérifiable à l'instant T. RETENTABLE — voir plus bas. */
+  /** 401 PGRST301 : JWT non vérifiable à l'instant T. TRANSITOIRE — voir plus bas. */
   | 'authTransient'
   /** Session réellement morte ou absente : seule une reconnexion débloque. */
   | 'authGone'
-  /** Pas de réponse du serveur. RETENTABLE. */
+  /** Le fetch n'a jamais abouti : réseau, CORS, annulation, ou échec de résolution du jeton. */
   | 'offline'
   /** RLS / privilèges : la requête ne passera jamais telle quelle. */
   | 'permission'
   /** `.single()` sans ligne. */
   | 'notFound'
-  /** Contrainte violée (unicité, clé étrangère, check). */
+  /** Contrainte violée (unicité, clé étrangère, check, exclusion). */
   | 'conflict'
+  /** Exception PL/pgSQL d'un trigger : une règle du produit, pas une panne. */
+  | 'businessRule'
+  /** Réponse du serveur qu'on ne sait pas nommer — dont les 5xx et les corps non-JSON. */
   | 'unknown'
 
 type ErrorShape = { code?: unknown; status?: unknown; message?: unknown; name?: unknown }
@@ -55,9 +60,25 @@ function errorStatus(error: unknown): number | null {
   return typeof status === 'number' ? status : null
 }
 
+/**
+ * Le fetch n'a pas abouti : la requête n'a jamais atteint PostgREST.
+ *
+ * Le signal est `code === ''`, et il est EXACT. postgrest-js pose cette chaîne
+ * vide dans le seul `catch` qui entoure son appel à fetch ; toute erreur
+ * construite depuis une réponse HTTP porte soit le code renvoyé par la base,
+ * soit aucun champ `code`.
+ *
+ * Le test portait avant sur le message (`/^(TypeError|FetchError|AbortError)/`),
+ * qui n'en était qu'une approximation : postgrest-js compose ce message avec
+ * `${fetchError.name ?? 'FetchError'}: …`, et le fetch de supabase-js résout le
+ * jeton AVANT de partir (`fetchWithAuth` fait `await getAccessToken()`). Toute
+ * la famille des erreurs d'auth jetées pendant ce renouvellement porte donc un
+ * autre `name` — elles tombaient en `unknown`, c'est-à-dire en « une erreur est
+ * survenue de notre côté », et n'étaient jamais retentées.
+ */
 function isTransportFailure(error: unknown): boolean {
   if (error instanceof TypeError) return true
-  const { code, message, name } = shapeOf(error)
+  const { code, name } = shapeOf(error)
   // GoTrue, lui, emballe la panne réseau dans une `AuthRetryableFetchError` :
   // `code` absent, `status: 0` — seul le `name` la distingue d'une erreur
   // applicative. Sans ce test elle tombe en `unknown` et les pages auth
@@ -65,9 +86,7 @@ function isTransportFailure(error: unknown): boolean {
   // couvre les 502/503/504 de GoTrue : « connexion au serveur impossible »
   // reste vrai dans ce cas.
   if (name === 'AuthRetryableFetchError') return true
-  // L'objet postgrest-js d'échec réseau : code vide + message préfixé du nom de
-  // l'erreur fetch. C'est le seul signal disponible, d'où le regex ancré.
-  return code === '' && typeof message === 'string' && /^(TypeError|FetchError|AbortError)/.test(message)
+  return code === ''
 }
 
 export function classifyError(error: unknown): ErrorKind {
@@ -103,6 +122,12 @@ export function classifyError(error: unknown): ErrorKind {
     // survenue de notre côté » alors que c'est un conflit de données.
     case '23P01':
       return 'conflict'
+    // Toute règle métier d'un trigger arrive ici : `raise exception` sans
+    // errcode donne P0001, et seule la chaîne du message les distingue (c'est
+    // `errorMessage.ts` qui la traduit). Le classement, lui, n'a qu'à savoir
+    // que ce n'est pas une panne : ça ne se retente pas.
+    case 'P0001':
+      return 'businessRule'
   }
 
   const status = errorStatus(error)
@@ -111,8 +136,34 @@ export function classifyError(error: unknown): ErrorKind {
   return 'unknown'
 }
 
-export function isRetryableKind(kind: ErrorKind): boolean {
-  return kind === 'authTransient' || kind === 'offline'
+/**
+ * Une erreur terminale ne passera pas mieux à la deuxième tentative.
+ *
+ * C'est la liste des EXCEPTIONS, et c'est voulu dans ce sens : la politique
+ * inverse (une liste blanche du retentable) laissait le fourre-tout `unknown`
+ * sans aucune tentative, et un hoquet de passerelle au réveil de l'onglet se
+ * figeait définitivement à l'écran. Un 502, un redémarrage de PostgREST ou un
+ * statement timeout ne sont pas des erreurs de l'utilisateur : ils se retentent.
+ */
+export function isTerminalError(error: unknown): boolean {
+  switch (classifyError(error)) {
+    case 'authGone':
+    case 'permission':
+    case 'notFound':
+    case 'conflict':
+    case 'businessRule':
+      return true
+    case 'authTransient':
+    case 'offline':
+    case 'unknown':
+      break
+  }
+
+  // Requête malformée (PGRST1xx) ou cache de schéma (PGRST2xx) : un bug de notre
+  // côté, pas un hoquet. Trois tentatives de plus ne feraient qu'ajouter du
+  // délai avant d'afficher le message.
+  const code = errorCode(error)
+  return code !== null && /^PGRST[12]/.test(code)
 }
 
 /**
@@ -122,6 +173,9 @@ export function isRetryableKind(kind: ErrorKind): boolean {
  * Ici et non dans chaque fichier de mutations : quatre hooks la portaient, deux
  * en constante et deux en lambda inline. C'est aussi le module qui décide ce
  * qu'est un `authTransient` — la règle et sa classification vivent ensemble.
+ *
+ * Volontairement plus stricte que celle des lectures (`retryPolicy.ts`) : un
+ * insert non idempotent retenté crée un doublon.
  */
 export const retryAuthTransient = (failureCount: number, error: Error) =>
   classifyError(error) === 'authTransient' && failureCount < 3

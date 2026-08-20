@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { useObjectives } from '../../../hooks/useObjectives'
 import { useMilestones, type Milestone } from '../../../hooks/useMilestones'
 import { useToggleMilestone } from '../../../hooks/useMilestoneMutations'
+import { firstLoadError } from '../../../hooks/useQueriesState'
 import { isWithinWindow, weeksLeftInQuarter } from '../../../lib/objectiveFeasibility'
 import { objectiveSkinOf, maskTitle } from '../../../lib/objectivePalette'
 import { addDays, formatDayMonthLong, quarterOf, year as yearOf } from '../../../lib/appDate'
@@ -68,7 +69,7 @@ export function MilestonesWidget() {
       title="Étapes en cours"
       icon={WIDGET_GLYPH['milestones']}
       meta={<span>jusqu’au {formatDayMonthLong(lastDay, today)}</span>}
-      error={objectivesQuery.error ?? milestonesQuery.error}
+      error={firstLoadError(objectivesQuery, milestonesQuery)}
       onRetry={() => void milestonesQuery.refetch()}
       retrying={milestonesQuery.isFetching}
     >

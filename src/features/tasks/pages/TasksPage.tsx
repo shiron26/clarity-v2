@@ -351,7 +351,9 @@ export function TasksPage() {
     )
   }
 
-  if (todayQuery.isError || dayStartQuery.isError) {
+  // `isLoadingError` : un refetch raté par-dessus des données ne vide pas l'écran
+  // (voir la règle « Réveil et connectivité » d'AGENTS.md).
+  if (todayQuery.isLoadingError || dayStartQuery.isLoadingError) {
     return (
       <div className="flex h-full items-center justify-center px-5">
         <ErrorState

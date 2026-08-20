@@ -198,23 +198,25 @@ export function ReviewPage() {
       })
   }
 
+  // Les queries du rituel sont dans le tableau, et pas leur erreur agrégée : c'est
+  // ce qui rend « Réessayer » capable de les relancer. `extraError` ne garde que
+  // l'échec de MUTATION, qu'aucun refetch ne peut rejouer.
   const queries = [
     todayQuery,
     objectivesQuery,
     openingsQuery,
     weekReviewsQuery,
     quarterReviewQuery,
+    ...ritual.queries,
   ]
-  const { firstError, retrying, onRetry } = useQueriesState(
-    queries,
-    ensureReview.error ?? ritual.error,
-  )
+  const { firstError, retrying, onRetry } = useQueriesState(queries, ensureReview.error)
 
   // `anyLoading` et jamais `isPending` : `useObjectives` est désactivé sans année,
   // et une query désactivée reste « pending » à vie (voir `lib/queryLoading.ts`).
   if (anyLoading([todayQuery, objectivesQuery])) return <PageLoading />
 
-  if (todayQuery.isError || !today || !year || !quarter || !currentYear) {
+  // `isLoadingError` : un refetch raté par-dessus des données ne vide pas l'écran.
+  if (todayQuery.isLoadingError || !today || !year || !quarter || !currentYear) {
     return (
       <PageError
         title="Impossible d’ouvrir votre rituel"
