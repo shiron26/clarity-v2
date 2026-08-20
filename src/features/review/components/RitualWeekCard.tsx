@@ -57,10 +57,13 @@ export function RitualWeekCard({
       type="button"
       disabled={!openable}
       onClick={onOpen}
+      // La coche et le tiret du corps de carte sont `aria-hidden` : sans ce suffixe,
+      // rien ne distinguerait une semaine notée d'une semaine en attente pour qui
+      // n'en voit pas la couleur. C'est la seule information que la carte porte.
       aria-label={
         nothing
           ? `Semaine ${weekNo}, ${weekDatesLabel(monday)} : aucun objectif à passer en revue`
-          : `Rituel de la semaine ${weekNo}, ${weekDatesLabel(monday)}`
+          : `Rituel de la semaine ${weekNo}, ${weekDatesLabel(monday)}${done ? ', noté' : ''}`
       }
       className={cn(
         'flex flex-col items-center rounded-xl px-4.5 py-4.5 transition-all duration-150',

@@ -1,0 +1,69 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Deux pushes rapprochés sur une PR n'ont pas besoin de deux exécutions.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    # `supabase start` télécharge et lance une dizaine de conteneurs : c'est lui qui
+    # domine la durée du job, pas la suite (~15 s).
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Avant tout le reste : ils ne demandent ni Docker ni base, ils durent quelques
+      # dizaines de millisecondes, et un échec ici rend inutile de lever la stack.
+      - name: Tests unitaires
+        run: npm test
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Applique les migrations ET supabase/seed.sql (la clé de chiffrement de dev) —
+      # sans elle, aucune vue déchiffrante ne répond.
+      #
+      # Les services exclus ne servent à aucun test : c'est le levier le plus rentable
+      # sur la durée du job. `realtime` est délibérément CONSERVÉ — il coûte peu et
+      # évite une surprise le jour où un test touchera un écran qui s'y abonne.
+      - name: Démarrer la stack Supabase locale
+        run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector,mailpit
+
+      # ~150 Mo de navigateur, sinon retéléchargés à chaque exécution.
+      - name: Cache des navigateurs Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # Chromium seul : les deux projets (desktop et mobile) l'utilisent.
+      # `--with-deps` installe les librairies système ; son oubli produit une erreur
+      # illisible au premier lancement.
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run test:e2e
+
+      # `!cancelled()` et non `failure()` : le rapport d'une exécution verte sert aussi,
+      # ne serait-ce qu'à voir les durées.
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

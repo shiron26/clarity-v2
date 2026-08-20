@@ -29,3 +29,7 @@ supabase/.branches
 
 # Env
 .env
+
+# Playwright
+playwright-report
+test-results
