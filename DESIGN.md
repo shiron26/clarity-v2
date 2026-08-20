@@ -139,7 +139,7 @@ Clarity est un dashboard de todo-list orienté objectifs, avec une navigation si
 - **Background (`#f7f6f3`)** : fond général de l'app et des panneaux inline.
 - **Surface (`#ffffff`)** : cartes, modales, menus.
 - **Texte** : primaire `#17181f` → secondaire `#4a4b55` → tertiaire `#6d6e78` → muet `#9a9aa6`/`#8b8b93` — la hiérarchie se fait par contraste de gris, pas par la couleur.
-- **Palette objectifs/listes** (cycle fixe, assignable) : `#8f9bde, #1a66ff, #00a3d9, #5c5cff, #00b862, #e8590c, #f5a524, #d6431f`.
+- **Palette objectifs/listes** (cycle fixe, assignable) : `#7c3aed, #1a66ff, #00b8e6, #e5197f, #00c25f, #f97316, #fbbf24, #e5252b`. Huit teintes franches, une par famille : un pastel ne se lit pas à 20 px, et deux bleus voisins ne se distinguent pas. Aucune ne reprend `danger` (`#d6431f`).
 
 ## Typography
 

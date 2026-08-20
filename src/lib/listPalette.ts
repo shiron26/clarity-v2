@@ -11,27 +11,39 @@
  */
 export const DEFAULT_LIST_COLOR = '#9a9aa6'
 
+/**
+ * Huit couleurs FRANCHES, et une seule par famille de teinte.
+ *
+ * La palette d'origine partait d'un lavande délavé et empilait trois bleus
+ * (bleu, cyan, indigo) : à la taille d'une pastille de 20 px, un ton pastel ne
+ * se distingue plus du gris d'une liste sans couleur, et deux voisines de même
+ * famille ne se distinguent plus l'une de l'autre. Le violet et le rose ouvrent
+ * le cercle du côté qui manquait.
+ *
+ * Le rouge n'est plus `#d6431f` : c'était exactement la couleur `danger`, et une
+ * liste teintée comme le bouton de suppression n'aide personne.
+ */
 export const LIST_PALETTE = [
-  '#8f9bde',
+  '#7c3aed',
   '#1a66ff',
-  '#00a3d9',
-  '#5c5cff',
-  '#00b862',
-  '#e8590c',
-  '#f5a524',
-  '#d6431f',
+  '#00b8e6',
+  '#e5197f',
+  '#00c25f',
+  '#f97316',
+  '#fbbf24',
+  '#e5252b',
 ] as const
 
 /** Libellés lus par les lecteurs d'écran : une pastille n'a pas de texte. */
 const LIST_COLOR_NAMES: Record<string, string> = {
-  '#8f9bde': 'lavande',
+  '#7c3aed': 'violet',
   '#1a66ff': 'bleu',
-  '#00a3d9': 'cyan',
-  '#5c5cff': 'indigo',
-  '#00b862': 'vert',
-  '#e8590c': 'orange',
-  '#f5a524': 'ambre',
-  '#d6431f': 'rouge',
+  '#00b8e6': 'cyan',
+  '#e5197f': 'rose',
+  '#00c25f': 'vert',
+  '#f97316': 'orange',
+  '#fbbf24': 'ambre',
+  '#e5252b': 'rouge',
 }
 
 export function listColorName(color: string): string {
