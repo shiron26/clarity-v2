@@ -3,6 +3,9 @@ import type { List } from '../../../hooks/useLists'
 import type { Task } from '../../../hooks/useTasks'
 import { formatOverdueDelay, type IsoDate } from '../../../lib/appDate'
 import { cn } from '../../../lib/cn'
+import { CalendarArrowIcon } from '../../../components/icons/CalendarArrowIcon'
+import { CalendarOffIcon } from '../../../components/icons/CalendarOffIcon'
+import { TooltipIconButton } from '../../../components/ui/TooltipIconButton'
 import { TaskListRow } from './TaskListRow'
 import { TaskRowCompact } from './TaskRowCompact'
 
@@ -33,19 +36,32 @@ type OverdueSectionProps = {
 }
 
 /**
- * Les deux actions groupées partagent leur forme : une pastille arrondie, **aux
- * deux largeurs**. Elles étaient du texte nu en mobile, pour gagner de la place :
- * deux mots gris alignés à droite d'un titre, que rien ne désignait comme
- * cliquables. Un fond et un rayon coûtent quelques pixels et rendent le bouton
- * évident ; c'est le libellé qui se raccourcit, pas la forme. Plus haut au doigt
- * qu'au curseur, pour la même raison.
+ * Les deux actions groupées partagent leur forme : une pastille arrondie. Elles
+ * étaient du texte nu, pour gagner de la place : deux mots gris alignés à droite
+ * d'un titre, que rien ne désignait comme cliquables. Un fond et un rayon coûtent
+ * quelques pixels et rendent le bouton évident ; c'est le libellé qui se
+ * raccourcit, pas la forme.
+ *
+ * Cette forme ne sert plus qu'AU DOIGT. Au curseur, les deux actions sont des
+ * icônes à infobulle (voir plus bas) : deux pastilles de texte au-dessus de la
+ * liste chargeaient le haut de l'écran plus que le retard lui-même. Le survol
+ * n'existant pas sur un téléphone, l'inverse n'est pas possible — d'où les deux
+ * rendus, montés en même temps comme partout ailleurs sur cet écran.
  */
 const BULK_ACTION = cn(
   'cursor-pointer rounded-2xl px-3 py-1.5 text-[11.5px] font-medium whitespace-nowrap',
   'transition-colors duration-150 focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
   'disabled:cursor-default disabled:opacity-60',
-  'lg:py-[5px] lg:text-[11px]',
 )
+
+/**
+ * Ce que chaque action fait, et la limite qu'aucune icône ne peut dessiner.
+ * Écrit une fois : le texte sert à l'infobulle du curseur et au libellé
+ * accessible des deux rendus.
+ */
+const POSTPONE_LABEL = 'Tout reporter à aujourd’hui'
+const UNDATE_LABEL = 'Tout mettre sans date'
+const SHARED_HINT = 'Les tâches partagées ne bougent pas.'
 
 /**
  * Le retard a sa section, pas ses propres lignes : ce sont celles du reste de
@@ -93,27 +109,50 @@ export function OverdueSection({
             pile de retards contient surtout des choses qu'on fera « un jour ».
             La retirer du calendrier est souvent la réponse honnête — d'où deux
             boutons de même taille, celui du report gardant seul le rouge. */}
-        <div className="ml-auto flex items-center gap-2">
+        {/* Au doigt : deux pastilles de texte, alignées à droite du titre. */}
+        <div className="ml-auto flex items-center gap-2 lg:hidden">
           <button
             type="button"
             onClick={onPostponeAll}
             disabled={postponing || undating}
-            title="Reporte vos tâches en retard à aujourd’hui. Les tâches partagées ne bougent pas."
+            aria-label={POSTPONE_LABEL}
             className={cn(BULK_ACTION, 'bg-danger-bg text-danger hover:bg-[#fbdcc6]')}
           >
-            <span className="lg:hidden">Reporter</span>
-            <span className="hidden lg:inline">Tout reporter à aujourd’hui</span>
+            Reporter
           </button>
           <button
             type="button"
             onClick={onUndateAll}
             disabled={postponing || undating}
-            title="Retire la date de vos tâches en retard : elles passent dans « Sans date ». Les tâches partagées ne bougent pas."
+            aria-label={UNDATE_LABEL}
             className={cn(BULK_ACTION, 'bg-field text-ink-3 hover:bg-border hover:text-ink')}
           >
-            <span className="lg:hidden">Sans date</span>
-            <span className="hidden lg:inline">Tout mettre sans date</span>
+            Sans date
           </button>
+        </div>
+
+        {/* Au curseur : deux icônes, posées CONTRE le titre et non contre le bord
+            opposé. Rejetées à droite, elles se lisaient comme les actions de
+            l'écran entier, à hauteur de « Nouvelle tâche » ; contre le titre,
+            elles appartiennent visiblement au retard qu'elles traitent. */}
+        <div className="hidden items-center gap-1.5 lg:flex">
+          <TooltipIconButton
+            label={POSTPONE_LABEL}
+            hint={SHARED_HINT}
+            onClick={onPostponeAll}
+            disabled={postponing || undating}
+            className="bg-danger-bg text-danger hover:bg-[#fbdcc6] hover:text-danger"
+          >
+            <CalendarArrowIcon className="size-4" />
+          </TooltipIconButton>
+          <TooltipIconButton
+            label={UNDATE_LABEL}
+            hint={`Elles passent dans « Sans date ». ${SHARED_HINT}`}
+            onClick={onUndateAll}
+            disabled={postponing || undating}
+          >
+            <CalendarOffIcon className="size-4" />
+          </TooltipIconButton>
         </div>
       </div>
 

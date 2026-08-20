@@ -26,6 +26,7 @@ import {
   importantButtonClass,
 } from './taskSheet'
 import { ToolbarToggle } from './ToolbarToggle'
+import { IMPORTANT_TOOLTIP, RECURRENCE_TOOLTIP } from './taskToolbarCopy'
 import { buttonClasses } from '../../../components/ui/buttonClasses'
 
 type TaskFormModalProps = {
@@ -373,6 +374,7 @@ export function TaskFormModal({
             <ToolbarToggle
               active={important}
               tone="danger"
+              tooltip={IMPORTANT_TOOLTIP}
               aria-pressed={important}
               onClick={() => setImportant((v) => !v)}
             >
@@ -380,6 +382,7 @@ export function TaskFormModal({
             </ToolbarToggle>
             <ToolbarToggle
               active={preset !== 'none'}
+              tooltip={RECURRENCE_TOOLTIP}
               aria-expanded={recurrenceOpen}
               onClick={() => setRecurrenceOpen((v) => !v)}
             >

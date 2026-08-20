@@ -42,6 +42,7 @@ import {
   importantButtonClass,
 } from './taskSheet'
 import { ToolbarToggle } from './ToolbarToggle'
+import { IMPORTANT_TOOLTIP, RECURRENCE_TOOLTIP } from './taskToolbarCopy'
 import { buttonClasses } from '../../../components/ui/buttonClasses'
 
 type TaskEditModalProps = {
@@ -381,6 +382,7 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
             <ToolbarToggle
               active={task.is_important}
               tone="danger"
+              tooltip={IMPORTANT_TOOLTIP}
               aria-pressed={task.is_important}
               onClick={() => edit({ is_important: !task.is_important })}
             >
@@ -388,6 +390,7 @@ export function TaskEditModal({ task, onClose, principals, lists, today }: TaskE
             </ToolbarToggle>
             <ToolbarToggle
               active={preset !== 'none'}
+              tooltip={RECURRENCE_TOOLTIP}
               aria-expanded={recurrenceOpen}
               onClick={() => setRecurrenceOpen((v) => !v)}
             >

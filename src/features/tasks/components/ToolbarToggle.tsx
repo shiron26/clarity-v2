@@ -1,11 +1,20 @@
 import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react'
 import { cn } from '../../../lib/cn'
+import { Tooltip, TooltipLines } from '../../../components/ui/Tooltip'
 
 type ToolbarToggleProps = {
   active: boolean
   tone?: 'default' | 'danger'
   children: ReactNode
   onClick: () => void
+  /**
+   * L'infobulle du segment, quand son libellé ne suffit pas à dire ce qu'il fait.
+   *
+   * `title` nomme le réglage, `hint` en donne la conséquence. Deux segments en
+   * ont besoin : « Important », dont l'effet ne se voit qu'au tri, et la
+   * récurrence, qui affiche sa VALEUR (« Aucune ») et non son rôle.
+   */
+  tooltip?: { title: string; hint?: string }
   /** Nécessaire quand le segment déclenche un `Popover` (rendu du focus). */
   ref?: Ref<HTMLButtonElement>
 } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'children'>
@@ -19,11 +28,12 @@ export function ToolbarToggle({
   tone = 'default',
   children,
   onClick,
+  tooltip,
   className,
   ref,
   ...rest
 }: ToolbarToggleProps) {
-  return (
+  const button = (
     <button
       ref={ref}
       type="button"
@@ -44,5 +54,13 @@ export function ToolbarToggle({
     >
       {children}
     </button>
+  )
+
+  if (!tooltip) return button
+
+  return (
+    <Tooltip content={<TooltipLines title={tooltip.title} hint={tooltip.hint} />}>
+      {button}
+    </Tooltip>
   )
 }

@@ -187,6 +187,8 @@ Coins arrondis mesurés (jamais pointus, jamais pilule sur du contenu) :
 - **Bouton primaire** : fond `#1a66ff`, texte blanc 12–13px/500, radius 10px, padding `9px 16–18px`, transition `background .13s, box-shadow .13s, transform .09s`. Hover `#0f4fd6` + `translateY(-1px)`, active `#0b3fae` + `translateY(1px)`, focus ring `0 0 0 3px rgba(26,102,255,.32)`.
 - **Bouton secondaire/icône** : carré 28×28px radius 9px fond `#ecebe6`, ou pill fond blanc bordure `#ecebe6` + icône SVG trait 15px.
 - **Bouton destructif** : texte `#9a9aa6`, hover fond `#fdeadb` + texte `#d6431f`.
+- **Bouton icône à infobulle** : carré 32×32px radius 10px fond `#ecebe6`, icône trait 16px, sans libellé visible. Réservé aux actions **secondaires** d'une barre, et jamais seul au doigt : le survol n'existe pas sur un téléphone, il faut alors un libellé.
+- **Infobulle** : bulle `#17181f` radius 10px padding `8px 10px`, texte blanc 11.5px, flèche de 11×5px, ombre popover, largeur max 16rem. Deux lignes au plus : le nom de l'action en 600, puis sa conséquence en `#d5d6e0`.
 - **Card** : fond blanc, radius 20px, padding 20px, ombre carte standard, sans bordure.
 - **Modale** : scrim `rgba(16,17,22,.45)`, contenu blanc radius 20px padding 24px ; header titre 15px/600 + bouton fermeture 28px ; séparateur `1px solid #f2f1ec` avant le footer.
 - **Input/textarea** : fond `#f7f6f3`, bordure `1.5px solid #ecebe6`, radius 10px, placeholder `#a5a5ad`.

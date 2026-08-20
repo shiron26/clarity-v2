@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router'
 import { AppShell } from './components/layout/AppShell'
 import { UpdateBanner } from './components/layout/UpdateBanner'
+import { TooltipProvider } from './components/ui/Tooltip'
 import { LoginPage } from './features/auth/pages/LoginPage'
 import { SignupPage } from './features/auth/pages/SignupPage'
 import { ProtectedRoute } from './features/auth/ProtectedRoute'
@@ -14,7 +15,10 @@ import { YearPage } from './features/year/pages/YearPage'
 
 function App() {
   return (
-    <>
+    // Le fournisseur d'infobulles enveloppe tout : il tient le délai PARTAGÉ
+    // entre deux infobulles voisines (voir `Tooltip.tsx`), ce qu'un fournisseur
+    // par bouton ne saurait pas faire.
+    <TooltipProvider>
       {/* Hors des routes : la mise à jour se propose aussi bien connecté que sur
           l'écran de connexion. */}
       <UpdateBanner />
@@ -41,7 +45,7 @@ function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </>
+    </TooltipProvider>
   )
 }
 
