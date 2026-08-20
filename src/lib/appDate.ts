@@ -46,6 +46,27 @@ export function daysOfWeek(date: IsoDate): IsoDate[] {
   return Array.from({ length: 7 }, (_, i) => addDays(monday, i))
 }
 
+export const ROLLING_WEEK_DAYS = 7
+
+/**
+ * Fenêtre glissante de sept jours : `date` et les six suivants.
+ *
+ * À ne pas confondre avec `daysOfWeek`, qui rend la semaine CALENDAIRE (lundi →
+ * dimanche). Les deux coexistent et ne sont pas interchangeables : les objectifs
+ * comptent en semaines ISO, et c'est le SERVEUR qui les indexe
+ * (`private.credit_day`, `extract(isoweek …)`) — une fenêtre mobile là-dedans
+ * désynchroniserait le front et la base. Une liste d'échéances, elle, n'a aucune
+ * raison de rétrécir à un seul jour le dimanche.
+ */
+export function rollingWeek(date: IsoDate): IsoDate[] {
+  return Array.from({ length: ROLLING_WEEK_DAYS }, (_, i) => addDays(date, i))
+}
+
+/** Dernier jour de la fenêtre glissante ouverte par `date`. */
+export function rollingWeekEnd(date: IsoDate): IsoDate {
+  return addDays(date, ROLLING_WEEK_DAYS - 1)
+}
+
 export function startOfMonth(date: IsoDate): IsoDate {
   return `${date.slice(0, 7)}-01`
 }

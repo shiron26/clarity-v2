@@ -8,6 +8,8 @@ import {
   isoWeekday,
   quarterBounds,
   quarterOf,
+  rollingWeek,
+  rollingWeekEnd,
   startOfWeek,
 } from './appDate'
 
@@ -46,6 +48,41 @@ describe('startOfWeek / endOfWeek', () => {
       '2027-01-02',
       '2027-01-03',
     ])
+  })
+})
+
+describe('rollingWeek / rollingWeekEnd', () => {
+  it('rend sept jours à partir de la date donnée, celle-ci comprise', () => {
+    expect(rollingWeek('2026-08-20')).toEqual([
+      '2026-08-20',
+      '2026-08-21',
+      '2026-08-22',
+      '2026-08-23',
+      '2026-08-24',
+      '2026-08-25',
+      '2026-08-26',
+    ])
+  })
+
+  it('rend sept jours un dimanche, là où `endOfWeek` rend le jour même', () => {
+    // La régression d'origine : « Votre semaine » un dimanche ne montrait plus
+    // qu'une colonne, alors que c'est le seul écran qui regarde devant.
+    expect(endOfWeek('2026-08-23')).toBe('2026-08-23')
+    expect(rollingWeek('2026-08-23')).toHaveLength(7)
+    expect(rollingWeekEnd('2026-08-23')).toBe('2026-08-29')
+  })
+
+  it('enjambe un changement de mois et d’année', () => {
+    expect(rollingWeekEnd('2026-08-28')).toBe('2026-09-03')
+    expect(rollingWeek('2026-12-29').at(-1)).toBe('2027-01-04')
+  })
+
+  it('la borne de fin EST le dernier jour de la fenêtre', () => {
+    // Deux appelants indépendants — le widget itère la fenêtre, l'écran Tâches ne
+    // compare qu'à sa borne. Ils doivent couvrir exactement le même intervalle.
+    for (const jour of ['2026-01-01', '2026-08-20', '2028-02-26', '2026-12-31']) {
+      expect(rollingWeekEnd(jour)).toBe(rollingWeek(jour).at(-1))
+    }
   })
 })
 
