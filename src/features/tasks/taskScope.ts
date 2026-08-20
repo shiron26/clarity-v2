@@ -4,7 +4,7 @@
 // et la feuille mobile affichent des compteurs pour toutes les vues, et la
 // recherche porte sur l'ensemble — cinq requêtes filtrées re-téléchargeraient les
 // mêmes lignes et pourraient se contredire pendant une invalidation.
-import { endOfWeek, type IsoDate } from '../../lib/appDate'
+import { rollingWeekEnd, type IsoDate } from '../../lib/appDate'
 import type { Task } from '../../hooks/useTasks'
 
 /**
@@ -26,14 +26,14 @@ export type TaskScope = 'today' | 'week' | 'undated' | 'all'
 
 export const SCOPE_TITLES: Record<TaskScope, string> = {
   today: 'Aujourd’hui',
-  week: 'Cette semaine',
+  week: 'Votre semaine',
   undated: 'Sans date',
   all: 'Toutes les tâches',
 }
 
 export const SCOPE_NAV_LABELS: Record<TaskScope, string> = {
   today: 'Aujourd’hui',
-  week: 'Cette semaine',
+  week: 'Votre semaine',
   undated: 'Sans date',
   all: 'Toutes',
 }
@@ -95,8 +95,12 @@ export function matchesScope(
     case 'today':
       return task.due_date === today
     case 'week':
-      // Fenêtre qui rétrécit au fil de la semaine : d'aujourd'hui à dimanche.
-      return task.due_date !== null && task.due_date >= today && task.due_date <= endOfWeek(today)
+      // Fenêtre GLISSANTE de sept jours, la même que le widget « Votre semaine ».
+      // Bornée à dimanche elle rétrécissait au fil de la semaine, jusqu'à ne plus
+      // contenir que le jour même — une vue qui se vide toute seule le week-end.
+      return (
+        task.due_date !== null && task.due_date >= today && task.due_date <= rollingWeekEnd(today)
+      )
     case 'undated':
       return task.due_date === null
     case 'all':
@@ -121,7 +125,7 @@ export function inOverdueScope(
 }
 
 /**
- * Compteur de vue : ce qui reste à faire. « Aujourd'hui » et « Cette semaine »
+ * Compteur de vue : ce qui reste à faire. « Aujourd'hui » et « Votre semaine »
  * comptent aussi le retard, puisqu'elles l'affichent (comme le badge de la
  * sidebar).
  */

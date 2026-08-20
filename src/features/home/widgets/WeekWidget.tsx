@@ -7,9 +7,9 @@ import { useObjectives } from '../../../hooks/useObjectives'
 import { TaskRowList } from '../../../components/tasks/TaskRowList'
 import { objectiveSkin } from '../../../lib/objectivePalette'
 import {
-  daysOfWeek,
   formatDayHeader,
   isoWeekday,
+  rollingWeek,
   WEEK_HEADERS,
   type IsoDate,
 } from '../../../lib/appDate'
@@ -24,14 +24,24 @@ import { WidgetCard, WidgetEmpty } from './WidgetCard'
 
 const DOTS = 3
 // Trois colonnes quand la place manque : sept à 390 px tombent à un chiffre
-// illisible. La fenêtre glisse avec le jour, puis se cale sur la fin de semaine.
+// illisible. La fenêtre suit le jour CHOISI, pas le jour courant : c'est ce qui
+// rend les sept jours atteignables sans ajouter deux flèches à une carte déjà
+// dense — choisir la colonne de droite découvre la suivante, de proche en proche.
 const NARROW_COLUMNS = 3
 
 /**
- * « Votre semaine » — les sept jours, ce qui est dû chacun, et le retard à côté.
+ * « Votre semaine » — aujourd'hui et les six jours suivants, ce qui est dû
+ * chacun, et le retard à côté.
  *
  * Le seul endroit du produit qui regarde devant : l'accueil s'arrête sinon à
  * aujourd'hui, et le jeudi chargé n'existe pas tant qu'on n'est pas jeudi.
+ *
+ * La fenêtre GLISSE (`rollingWeek`), elle n'est pas la semaine calendaire. Une
+ * bande lundi → dimanche rétrécit au fil de la semaine : le vendredi elle ne
+ * montre plus que trois jours d'avenir contre quatre colonnes de passé grisé, et
+ * le dimanche plus qu'un seul. C'est l'exact contraire de ce que ce widget est
+ * là pour faire. Le passé n'y figure plus du tout : il est déjà couvert par la
+ * carte « En retard » posée juste à côté.
  *
  * Il a absorbé « Aujourd'hui », qui affichait exactement les mêmes lignes que la
  * colonne du jour — un doublon à deux endroits de l'écran. Le retard le suit :
@@ -58,7 +68,7 @@ export function WeekWidget({ span }: { span: WidgetSpan }) {
   // ne s'écrit que si c'est vrai.
   const { principals, weekComplete, sessionsThisWeek } = useDashboardObjectives(today)
 
-  const week = useMemo(() => daysOfWeek(today), [today])
+  const week = useMemo(() => rollingWeek(today), [today])
   const day = selected && week.includes(selected) ? selected : today
 
   const objectiveById = useMemo(
@@ -92,10 +102,10 @@ export function WeekWidget({ span }: { span: WidgetSpan }) {
     [overdueQuery.data, isVisible],
   )
 
-  // La fenêtre étroite suit le jour, sans jamais dépasser dimanche.
+  // La fenêtre étroite se centre sur le jour choisi, sans sortir de la bande.
   const narrow = span === 1
-  const todayIndex = isoWeekday(today) - 1
-  const narrowStart = Math.min(todayIndex, week.length - NARROW_COLUMNS)
+  const dayIndex = week.indexOf(day)
+  const narrowStart = Math.min(Math.max(dayIndex - 1, 0), week.length - NARROW_COLUMNS)
 
   const shown = (byDay.get(day) ?? []).filter(isVisible)
 
@@ -127,8 +137,10 @@ export function WeekWidget({ span }: { span: WidgetSpan }) {
             const inWindow = index >= narrowStart && index < narrowStart + NARROW_COLUMNS
             const pending = pendingOf(date)
             const isToday = date === today
-            const past = date < today
             const active = date === day
+            // Le libellé vient du VRAI jour de la semaine, jamais de la position
+            // dans la bande : celle-ci ne commence plus au lundi.
+            const header = WEEK_HEADERS[isoWeekday(date) - 1]
             const dots = (byDay.get(date) ?? [])
               .filter((t) => t.completed_at === null)
               .slice(0, DOTS)
@@ -145,7 +157,6 @@ export function WeekWidget({ span }: { span: WidgetSpan }) {
                   'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
                   inWindow ? 'block' : narrow ? 'hidden' : 'hidden lg:block',
                   isToday ? 'bg-primary text-white' : 'bg-surface-subtle hover:bg-field',
-                  past && !isToday && 'opacity-55',
                   active && !isToday && 'ring-2 ring-border-strong',
                 )}
               >
@@ -155,7 +166,7 @@ export function WeekWidget({ span }: { span: WidgetSpan }) {
                     isToday ? 'text-white/75' : 'text-ink-3',
                   )}
                 >
-                  {WEEK_HEADERS[index].short}
+                  {header.short}
                 </span>
                 <span
                   className={cn(

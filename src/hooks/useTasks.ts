@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { queryKeys, type TaskView } from '../lib/queryKeys'
 import { useAuth } from '../features/auth/useAuth'
-import { endOfWeek, type IsoDate } from '../lib/appDate'
+import { rollingWeekEnd, type IsoDate } from '../lib/appDate'
 
 export type Task = {
   id: string
@@ -83,7 +83,9 @@ export function useTasks(
           query = query.eq('due_date', today!)
           break
         case 'week':
-          query = query.gte('due_date', today!).lte('due_date', endOfWeek(today!))
+          // Même fenêtre glissante que `matchesScope` : deux définitions de
+          // « semaine » dans le dépôt, c'est la garantie qu'elles divergeront.
+          query = query.gte('due_date', today!).lte('due_date', rollingWeekEnd(today!))
           break
         case 'overdue':
           query = query.lt('due_date', today!).is('completed_at', null)

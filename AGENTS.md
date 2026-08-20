@@ -337,6 +337,14 @@ le texte est le seul accompagnement dont dispose l'utilisateur. Il est donc
   C'est ce qui borne la section « Terminées » de l'écran Tâches à la journée en
   cours (SPEC §5), via l'option `completedSince` de `useTasks` — sinon la vue
   « Toutes » rapatrie tout l'historique des tâches cochées.
+- **Deux notions de semaine coexistent, et elles ne sont pas interchangeables.**
+  `daysOfWeek` / `startOfWeek` / `isoWeek` rendent la semaine **calendaire** (lundi →
+  dimanche) : elles servent partout où la donnée est indexée par le serveur
+  (`objective_period`, `private.credit_day`, rituel hebdomadaire, heatmaps), et y glisser
+  une fenêtre mobile désynchroniserait le front et la base. `rollingWeek` /
+  `rollingWeekEnd` rendent les **sept jours à partir d'aujourd'hui** : c'est ce que
+  regardent les listes d'échéances (widget « Votre semaine », vue du même nom de l'écran
+  Tâches), qui n'ont aucune raison de rétrécir à une seule colonne le dimanche.
 - **`objective_period` fait foi pour la progression** — jamais recalculée depuis les
   tâches du cache. La période est la semaine ou le mois selon `objective.period_unit` :
   l'indexer par le seul numéro de période est ambigu dès qu'une grille de trimestre
