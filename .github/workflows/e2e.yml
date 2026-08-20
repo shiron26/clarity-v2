@@ -34,7 +34,24 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Alignée sur la devDependency `supabase` de package.json : avec `latest`, le
+          # même commit s'exécute avec un binaire différent d'un jour à l'autre. À
+          # rebumper à la main en même temps que la dépendance.
+          version: 2.114.0
+
+      # 54321-54322 tombent dans la plage de ports éphémères de Linux
+      # (`net.ipv4.ip_local_port_range` = 32768-60999), où le noyau pioche AUSSI les
+      # ports source des connexions sortantes. Les `docker pull` de l'étape suivante en
+      # ouvrent des centaines vers ghcr.io ; qu'une seule tire 54322 et le bind de
+      # `docker-proxy` échoue en « address already in use », au hasard, sur un runner
+      # pourtant neuf. `ip_local_reserved_ports` ne retire ces ports QUE de l'attribution
+      # automatique : un bind explicite, lui, continue de fonctionner.
+      #
+      # La plage couvre tout supabase/config.toml d'un coup : 54320 (shadow), 54321
+      # (API), 54322 (db), 54323 (Studio), 54324 (SMTP), 54327 (analytics), 54329
+      # (pooler). Le 5173 de Vite est sous 32768, donc déjà hors de portée.
+      - name: Réserver les ports de la stack locale
+        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=54320-54329
 
       # Applique les migrations ET supabase/seed.sql (la clé de chiffrement de dev) —
       # sans elle, aucune vue déchiffrante ne répond.
