@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { cn } from '../../../lib/cn'
 import { SegmentedGroup } from '../../../components/ui/SegmentedGroup'
+import { IconButton } from '../../../components/ui/IconButton'
+import { MinusIcon } from '../../../components/icons/MinusIcon'
 import { DragHandle } from '../../../components/dnd/DragHandle'
 import type { DragHandleProps } from '../../../components/dnd/useSortableItem'
 import type { WidgetInstance, WidgetSpan } from '../dashboardLayout'
@@ -53,8 +55,16 @@ export function WidgetFrame({
       )}
     >
       <div className="mb-1 flex items-center gap-2 px-1.5 pt-0.5">
+        {/* La poignée en pastille (`tone="solid"`), et elle seule ici : dans un
+            mode où déplacer EST le travail, la poignée d'une ligne de liste
+            passait pour un décor et personne ne trouvait le geste. La copie qui
+            suit le pointeur reprend la même forme, sinon on ne reconnaît pas ce
+            qu'on vient de saisir. */}
         {overlay ? (
-          <span aria-hidden className="shrink-0 px-0.5 text-[12px] leading-none text-primary">
+          <span
+            aria-hidden
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm bg-primary-soft text-[14px] leading-none text-primary"
+          >
             ⠿
           </span>
         ) : (
@@ -63,6 +73,7 @@ export function WidgetFrame({
               label={`Déplacer « ${label} »`}
               handleProps={handleProps}
               active={dragging}
+              tone="solid"
             />
           )
         )}
@@ -88,19 +99,18 @@ export function WidgetFrame({
           </div>
         )}
 
+        {/* Un « moins », pas un mot : le CTA texte pesait autant que le réglage
+            de largeur juste à côté, pour une action qu'on fait une fois. Le
+            libellé reste entier dans l'infobulle et pour les lecteurs d'écran,
+            sans quoi l'icône devient une devinette. */}
         {!overlay && onRemove && (
-          <button
-            type="button"
+          <IconButton
+            label={`Retirer « ${label} »`}
             onClick={onRemove}
-            aria-label={`Retirer « ${label} »`}
-            className={cn(
-              'shrink-0 cursor-pointer rounded-sm px-2 py-1 text-label font-medium text-ink-muted',
-              'transition-colors duration-150 hover:bg-danger-bg hover:text-danger',
-              'focus-visible:ring-3 focus-visible:ring-primary/32 focus-visible:outline-none',
-            )}
+            className="shrink-0 bg-transparent text-ink-muted hover:bg-danger-bg hover:text-danger"
           >
-            Retirer
-          </button>
+            <MinusIcon className="size-4" />
+          </IconButton>
         )}
       </div>
 

@@ -208,10 +208,15 @@ function SortableListRow({
       )}
     >
       <div className="flex items-center gap-2.5 lg:contents">
+        {/* Ton `solid` comme le mode Organiser de l'accueil, et pour la même
+            raison : on n'ouvre pas cette fenêtre pour lire ses listes, on
+            l'ouvre pour les ranger. La poignée d'une ligne de tâche peut se
+            taire, celle-ci doit se voir. */}
         <DragHandle
           label={`Déplacer ${list.name}`}
           handleProps={handleProps}
           active={isDragging}
+          tone="solid"
           className="lg:order-first"
         />
 
@@ -246,7 +251,8 @@ function SortableListRow({
         label={`Couleur de la liste ${list.name}`}
         value={list.color ?? LIST_PALETTE[0]}
         onChange={onRecolor}
-        className="pl-6 lg:order-first lg:pl-0"
+        // L'indentation suit la largeur de la poignée : 28 px, plus le gap de 10.
+        className="pl-9.5 lg:order-first lg:pl-0"
       />
 
       {confirming && (

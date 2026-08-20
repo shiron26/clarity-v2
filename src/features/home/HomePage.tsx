@@ -17,13 +17,13 @@ import { useDashboardLayout } from './useDashboardLayout'
 import { DashboardContext, type DashboardCtx } from './dashboardContext'
 import { DashboardGrid } from './components/DashboardGrid'
 import { DashboardToolbar } from './components/DashboardToolbar'
+import { OrganizeBar } from './components/OrganizeBar'
 import { WidgetPickerModal } from './components/WidgetPickerModal'
 import { BilanCard } from './components/BilanCard'
 import { ObjectivesSection } from './components/ObjectivesSection'
 import { usePrivacy } from '../../hooks/usePrivacy'
 import { useQueriesState, type QueryLike } from '../../hooks/useQueriesState'
 import { PageLoading, PageError } from '../../components/layout/PageState'
-import { Button } from '../../components/ui/Button'
 
 // Le provider de disposition reste interne à la feature : le dashboard est le
 // seul écran qui la consomme, App.tsx n'a pas à en connaître l'existence.
@@ -168,7 +168,15 @@ function Dashboard() {
       <div className="flex flex-col gap-4.5">
         <h1 className="sr-only">Dashboard</h1>
 
-        <DashboardToolbar editing={editing} onToggleEditing={() => setEditing((v) => !v)} />
+        {/* La barre du mode Organiser prend la place du header de page : elle
+            porte l'unique sortie du mode. Rendue ici mais AFFICHÉE hors de la
+            zone qui défile, par portail dans l'emplacement de la coquille — sa
+            place dans ce JSX n'a donc aucune incidence sur sa position. */}
+        {editing ? (
+          <OrganizeBar onAddWidget={() => setPickerOpen(true)} onDone={() => setEditing(false)} />
+        ) : (
+          <DashboardToolbar onOrganize={() => setEditing(true)} />
+        )}
 
         {firstError && (
           <ErrorState
@@ -190,21 +198,6 @@ function Dashboard() {
             period={bilan.pending.period}
             objectiveCount={bilanObjectives.length}
           />
-        )}
-
-        {editing && (
-          <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-surface px-5 py-4 shadow-card">
-            <p className="min-w-50 flex-1 text-body text-ink-2">
-              Glissez les widgets pour les ranger, réglez leur largeur, retirez ce qui ne
-              vous sert pas.
-            </p>
-            <Button variant="secondary" size="sm" onClick={() => setPickerOpen(true)}>
-              Ajouter un widget
-            </Button>
-            <Button size="sm" onClick={() => setEditing(false)}>
-              Terminé
-            </Button>
-          </div>
         )}
 
         <DashboardGrid editing={editing} hidden={hiddenWidgets} />
