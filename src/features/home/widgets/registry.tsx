@@ -46,9 +46,11 @@ export const WIDGET_DEFS: WidgetDef[] = [
     mobile: true,
   },
   {
+    // L'identifiant ne change pas avec le libellé : les dispositions déjà
+    // enregistrées le portent, et le renommer les viderait de ce widget.
     id: 'horizon',
-    label: 'L’horizon',
-    hint: 'L’année, le jour où vous en êtes, et la date où vos objectifs se terminent',
+    label: 'L’année',
+    hint: 'Où vous en êtes dans l’année, semaine après semaine',
     defaultSpan: 3,
     mobile: true,
   },
@@ -120,7 +122,7 @@ export function renderWidget(widget: WidgetInstance): ReactNode {
     case 'ritual':
       return <RitualWidget />
     case 'horizon':
-      return <HorizonWidget />
+      return <HorizonWidget span={widget.span} />
     case 'week':
       return <WeekWidget span={widget.span} />
     case 'inbox':

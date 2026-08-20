@@ -1,82 +1,81 @@
-import { useMemo } from 'react'
-import { useObjectives, selectPrincipals } from '../../../hooks/useObjectives'
-import { isWithinWindow } from '../../../lib/objectiveFeasibility'
-import { formatDayMonthLong, year as yearOf } from '../../../lib/appDate'
+import { isoWeek, quarterOf, year as yearOf, yearProgressPercent } from '../../../lib/appDate'
+import { cn } from '../../../lib/cn'
+import type { WidgetSpan } from '../dashboardLayout'
 import { useDashboardCtx } from '../dashboardContext'
-import { WIDGET_GLYPH } from './glyphs'
-import { WidgetCard } from './WidgetCard'
-import { horizonState } from './horizon'
 
-const MONTHS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
+const QUARTERS = [1, 2, 3, 4]
 
 /**
- * « L'horizon » — l'année, la position du jour, et la date à laquelle la fenêtre
- * en cours se referme.
+ * « L'année » — où on en est dedans, et rien d'autre.
  *
- * Le trait d'aujourd'hui est orange (`bg-today`) et non bleu : le bleu ne
- * signale qu'une action, jamais un repère.
+ * Le pourcentage mesure le TEMPS ÉCOULÉ, pas une progression d'objectif : le
+ * produit n'affiche jamais de score (SPEC §1). Il est calculé depuis la date du
+ * serveur, jamais depuis l'horloge du navigateur.
+ *
+ * Il remplace la frise des douze mois et sa phrase d'échéance : douze initiales
+ * et un trait ne disaient pas où on en était, et la date de fin des objectifs se
+ * lit déjà sur leurs cartes. Ce qui restait à dire tenait en un pourcentage.
+ *
+ * Le bloc est SOMBRE, seul de l'accueil : c'est un repère, pas une carte de
+ * travail, et rien ne s'y coche. Il porte donc son propre fond au lieu de passer
+ * par `WidgetCard`. Il n'a aucune query : rien ne peut échouer, il n'a pas
+ * d'état d'erreur.
+ *
+ * Les repères de trimestre ne sont pas cliquables : sur l'accueil il n'y a
+ * aucun trimestre à sélectionner. C'est `/annee` qui sert à ça.
  */
-export function HorizonWidget() {
+export function HorizonWidget({ span }: { span: WidgetSpan }) {
   const { today } = useDashboardCtx()
-  const objectivesQuery = useObjectives(yearOf(today))
 
-  const principals = useMemo(
-    () => selectPrincipals(objectivesQuery.data).filter((o) => isWithinWindow(o, today)),
-    [objectivesQuery.data, today],
-  )
-  const state = useMemo(() => horizonState(principals, today), [principals, today])
-
-  const { nearest } = state
-  const sentence = !nearest
-    ? `Il reste ${state.weeksLeftInYear} semaines en ${yearOf(today)}.`
-    : nearest.shared
-      ? `${objectiveCount(nearest.count)} ${nearest.count > 1 ? 'courent' : 'court'} jusqu’au ${formatDayMonthLong(nearest.lastDay, today)}. Il reste ${weeks(nearest.weeksLeft)}.`
-      : `Le plus proche se termine le ${formatDayMonthLong(nearest.lastDay, today)}, dans ${weeks(nearest.weeksLeft)}.`
+  const percent = yearProgressPercent(today)
+  const week = isoWeek(today).isoWeek
+  const currentQuarter = quarterOf(today)
+  // Le repli suit la largeur RÉELLE : posé sur un tiers de grand écran, le bloc
+  // est aussi à l'étroit que sur un téléphone, et un point de rupture l'ignore.
+  const narrow = span === 1
 
   return (
-    <WidgetCard
-      title={String(yearOf(today))}
-      icon={WIDGET_GLYPH['horizon']}
-      meta={<span>{formatDayMonthLong(today)}</span>}
-      error={objectivesQuery.error}
-      onRetry={() => void objectivesQuery.refetch()}
-      retrying={objectivesQuery.isFetching}
-    >
-      <div className="relative mt-1 h-3 overflow-hidden rounded-2xl bg-field">
+    <section className="flex h-full flex-col justify-center rounded-2xl bg-night px-4.5 py-4 sm:px-6 sm:py-5">
+      <div className="mb-3.5 flex items-baseline justify-between gap-3">
+        <span className="min-w-0 truncate text-body font-semibold tracking-[1.3px] text-ink-onnight-strong">
+          {yearOf(today)} · SEMAINE {week}
+        </span>
+        <span className="shrink-0 font-semibold text-white">
+          {percent}
+          <span className="text-[11px] font-medium text-ink-onnight">
+            {narrow ? ' %' : ' % de l’année'}
+          </span>
+        </span>
+      </div>
+
+      <div className="relative h-[7px] rounded-xs bg-night-line">
         <div
-          className="h-full rounded-2xl bg-ink-muted/45"
-          style={{ width: `${state.progress}%` }}
+          className="bg-year-progress absolute inset-y-0 left-0 rounded-xs"
+          style={{ width: `${percent}%` }}
         />
-        {[25, 50, 75].map((mark) => (
-          <span
-            key={mark}
-            aria-hidden
-            className="absolute inset-y-0 w-px bg-surface"
-            style={{ left: `${mark}%` }}
-          />
-        ))}
         <span
           aria-hidden
-          className="absolute inset-y-0 w-0.5 rounded-2xl bg-today"
-          style={{ left: `calc(${state.progress}% - 1px)` }}
+          className="absolute -top-[3.5px] size-3.5 -translate-x-[7px] rounded-full border-[3.5px] border-brand-bright bg-white"
+          style={{ left: `${percent}%` }}
         />
       </div>
 
-      <div aria-hidden className="mt-1.5 grid grid-cols-12 text-center text-micro text-ink-muted">
-        {MONTHS.map((initial, index) => (
-          <span key={index}>{initial}</span>
+      <div aria-hidden className="mt-3 flex justify-between">
+        {QUARTERS.map((q) => (
+          <span
+            key={q}
+            className={cn(
+              'rounded-2xl px-2.5 py-[3px] text-[10px]',
+              q === currentQuarter
+                ? 'bg-white/14 font-semibold text-white'
+                : 'text-ink-onnight-faint',
+            )}
+          >
+            Q{q}
+            {q === currentQuarter && !narrow && ' · en cours'}
+          </span>
         ))}
       </div>
-
-      <p className="mt-3 text-body text-ink-2">{sentence}</p>
-    </WidgetCard>
+    </section>
   )
-}
-
-function objectiveCount(count: number): string {
-  return count === 1 ? 'Votre objectif' : `Vos ${count} objectifs`
-}
-
-function weeks(count: number): string {
-  return count === 1 ? '1 semaine' : `${count} semaines`
 }

@@ -68,6 +68,10 @@
 
   /* Action — seul signal d'action de l'UI */
   --color-primary: #1a66ff;
+  /* Le bleu clair où finissent les dégradés de marque. Il ne sert JAMAIS de
+     signal d'action : seulement à raccorder un élément au bout d'un dégradé —
+     le curseur posé sur la frise de l'année. */
+  --color-brand-bright: #2f8bff;
   --color-primary-hover: #0f4fd6;
   --color-primary-active: #0b3fae;
   --color-primary-soft: #e6ecff;
@@ -184,6 +188,13 @@
    s'exprime pas en token de couleur. Deux decks l'écrivaient en dur. */
 @utility bg-deck-number {
   background-image: linear-gradient(180deg, #5b8cff 0%, #3f7dff 45%, #4aa8ff 100%);
+}
+
+/* La part écoulée de l'année, sur le bloc sombre de l'accueil. Le dégradé va de
+   gauche à droite : il s'éclaircit à mesure qu'on avance, et le curseur reprend
+   sa couleur d'arrivée (`border-brand-bright`). Même exception que ci-dessus. */
+@utility bg-year-progress {
+  background-image: linear-gradient(90deg, #0044e0, #2f8bff);
 }
 
 @keyframes authIn {

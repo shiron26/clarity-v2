@@ -75,7 +75,13 @@ export function WidgetCard({
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {/* `-m-1 p-1` : le rectangle de clipping recule de 4 px. Un liseré de
+          sélection et un anneau de focus se peignent HORS de la boîte, et
+          `overflow-y: auto` force `overflow-x` au même régime : sans cette
+          marge, le haut de la carte de jour sélectionnée de « Votre semaine »
+          était rogné, et tous les anneaux de focus des widgets avec lui. La
+          marge négative annule le décalage, l'espacement ne bouge pas. */}
+      <div className="-m-1 flex min-h-0 flex-1 flex-col overflow-y-auto p-1">
         {error ? (
           <ErrorState description={dataErrorMessage(error)} onRetry={onRetry} retrying={retrying} />
         ) : (

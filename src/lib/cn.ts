@@ -31,7 +31,7 @@ const twMerge = extendTailwindMerge({
           ],
         },
       ],
-      'bg-image': ['bg-brand-gradient'],
+      'bg-image': ['bg-brand-gradient', 'bg-year-progress'],
     },
   },
 })

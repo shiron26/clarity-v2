@@ -8,6 +8,7 @@ import { TaskRowList } from '../../../components/tasks/TaskRowList'
 import { objectiveSkin } from '../../../lib/objectivePalette'
 import {
   formatDayHeader,
+  formatDayNumber,
   isoWeekday,
   rollingWeek,
   WEEK_HEADERS,
@@ -141,8 +142,11 @@ export function WeekWidget({ span }: { span: WidgetSpan }) {
             // Le libellé vient du VRAI jour de la semaine, jamais de la position
             // dans la bande : celle-ci ne commence plus au lundi.
             const header = WEEK_HEADERS[isoWeekday(date) - 1]
+            // Les pastilles ne parlent que des OBJECTIFS : une couleur de liste
+            // ici disait « il y a quelque chose », ce que le quantième ne dit
+            // déjà que trop. Le jour qui porte une séance se repère d'un coup.
             const dots = (byDay.get(date) ?? [])
-              .filter((t) => t.completed_at === null)
+              .filter((t) => t.completed_at === null && t.objective_id !== null)
               .slice(0, DOTS)
 
             return (
@@ -168,19 +172,23 @@ export function WeekWidget({ span }: { span: WidgetSpan }) {
                 >
                   {header.short}
                 </span>
+                {/* Le QUANTIÈME, pas le nombre de tâches : sur une colonne de
+                    calendrier, un gros chiffre se lit comme une date, et « le 20
+                    août » s'affichait « 2 ». Le compte reste dans l'en-tête du
+                    widget et dans le libellé accessible du bouton. */}
                 <span
                   className={cn(
                     'block text-title font-semibold tabular-nums',
-                    isToday ? 'text-white' : pending === 0 ? 'text-ink-muted' : 'text-ink',
+                    isToday ? 'text-white' : 'text-ink',
                   )}
                 >
-                  {pending}
+                  {formatDayNumber(date)}
                 </span>
                 <span aria-hidden className="flex h-1.5 items-center justify-center gap-0.5">
                   {dots.map((task) => (
                     <DayDot
                       key={task.id}
-                      color={dotColor(task, objectiveById, listById)}
+                      color={dotColor(task, objectiveById)}
                       onPrimary={isToday}
                     />
                   ))}
@@ -245,15 +253,9 @@ function DayDot({ color, onPrimary }: { color: string | null; onPrimary: boolean
   )
 }
 
-function dotColor(
-  task: Task,
-  objectives: Map<string, { slot: number | null }>,
-  lists: Map<string, { color: string | null }>,
-): string | null {
-  if (task.objective_id) {
-    const objective = objectives.get(task.objective_id)
-    if (objective) return objectiveSkin(objective.slot).core
-  }
-  if (task.list_id) return lists.get(task.list_id)?.color ?? null
-  return null
+/** La couleur de l'objectif porté par la tâche. Seules celles-là ont une pastille. */
+function dotColor(task: Task, objectives: Map<string, { slot: number | null }>): string | null {
+  if (!task.objective_id) return null
+  const objective = objectives.get(task.objective_id)
+  return objective ? objectiveSkin(objective.slot).core : null
 }
