@@ -491,6 +491,12 @@ mobile qui se réveille, et huit queries périmées relancées d'un coup.
   d'accueil (`pushSupport()`, `src/lib/push.ts`). Le SW montre **toujours** une
   notification à la réception d'un push, même illisible : iOS révoque l'abonnement
   d'une app qui reçoit un push sans en afficher.
+- **La pastille de l'icône (`setAppBadge`) ne porte qu'un nombre** : ce qui reste à
+  faire aujourd'hui, retards compris. Deux poseurs, un seul compte : le SW au push du
+  matin (`badge` du payload, `private.day_task_counts`), et `useAppBadge` tant que l'app
+  est ouverte (`usePendingTodayCount`, partagé avec le badge « Tâches » de la sidebar).
+  Elle n'existe que dans la PWA installée et, sur iOS, avec la permission de
+  notification : sans support, on s'en passe sans rien dire.
 - Un déploiement cassé reste servi depuis le cache jusqu'à ce que l'utilisateur
   accepte la mise à jour. Trappe de secours : déployer une fois avec
   `VitePWA({ selfDestroying: true })`, qui désenregistre le SW et purge les caches.

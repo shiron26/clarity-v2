@@ -440,7 +440,8 @@ begin
 
   v_res := public.digest_summary(ua, v_today);
   if v_res ->> 'body' <> '3 tâches (dont 2 en retard) · 2 RDV · 2 mails · 🎂 Léa, Marie'
-     or v_res ->> 'url' <> '/ma-journee' then
+     or v_res ->> 'url' <> '/ma-journee'
+     or (v_res ->> 'badge')::int <> 3 then
     raise exception 'FAIL: corps du résumé (%)', v_res;
   end if;
   raise notice 'OK: résumé « % »', v_res ->> 'body';
@@ -456,6 +457,9 @@ begin
 
   if public.digest_summary(ub, v_today) ->> 'body' <> 'Rien de prévu aujourd''hui. Bonne journée !' then
     raise exception 'FAIL: journée vide (%)', public.digest_summary(ub, v_today);
+  end if;
+  if (public.digest_summary(ub, v_today) ->> 'badge')::int <> 0 then
+    raise exception 'FAIL: pastille d''une journée vide (%)', public.digest_summary(ub, v_today);
   end if;
   raise notice 'OK: journée vide';
 

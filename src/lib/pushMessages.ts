@@ -20,3 +20,13 @@ export function safeNotificationPath(value: unknown): string {
   if (!/^\/(?![/\\])[^\s]*$/.test(value)) return DEFAULT_NOTIFICATION_PATH
   return value
 }
+
+/**
+ * La pastille de l'icône, telle que le payload du matin la porte (`badge`, le
+ * compte de `private.day_task_counts`). `null` = rien d'exploitable : le SW ne
+ * touche alors pas à la pastille en place. `0` l'efface.
+ */
+export function badgeFromPayload(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null
+  return value
+}

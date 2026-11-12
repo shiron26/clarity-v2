@@ -15,7 +15,12 @@
 // repli de navigation ne sert que l'index précaché.
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching'
 import { NavigationRoute, registerRoute } from 'workbox-routing'
-import { DIGEST_NOTIFICATION_TAG, SW_NAVIGATE, safeNotificationPath } from './lib/pushMessages'
+import {
+  DIGEST_NOTIFICATION_TAG,
+  SW_NAVIGATE,
+  badgeFromPayload,
+  safeNotificationPath,
+} from './lib/pushMessages'
 
 declare const self: ServiceWorkerGlobalScope
 
@@ -36,7 +41,7 @@ self.addEventListener('message', (event) => {
 
 // ─── Notifications ──────────────────────────────────────────────────────────
 
-type DigestPayload = { title?: unknown; body?: unknown; url?: unknown }
+type DigestPayload = { title?: unknown; body?: unknown; url?: unknown; badge?: unknown }
 
 self.addEventListener('push', (event) => {
   let payload: DigestPayload = {}
@@ -49,14 +54,23 @@ self.addEventListener('push', (event) => {
   const title = typeof payload.title === 'string' && payload.title ? payload.title : 'Clarity'
   const body = typeof payload.body === 'string' ? payload.body : ''
 
+  const badge = badgeFromPayload(payload.badge)
+
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body,
-      // Un résumé remplace le précédent au lieu de s'empiler.
-      tag: DIGEST_NOTIFICATION_TAG,
-      icon: '/icon-192.png',
-      data: { url: safeNotificationPath(payload.url) },
-    }),
+    Promise.all([
+      self.registration.showNotification(title, {
+        body,
+        // Un résumé remplace le précédent au lieu de s'empiler.
+        tag: DIGEST_NOTIFICATION_TAG,
+        icon: '/icon-192.png',
+        data: { url: safeNotificationPath(payload.url) },
+      }),
+      // La pastille ne doit jamais empêcher la notification : sans support ou
+      // sans permission, l'appel est absent ou rejette, et on s'en passe.
+      badge !== null && 'setAppBadge' in self.navigator
+        ? self.navigator.setAppBadge(badge).catch(() => undefined)
+        : undefined,
+    ]),
   )
 })
 

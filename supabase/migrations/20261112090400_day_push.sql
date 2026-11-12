@@ -268,8 +268,12 @@ begin
   -- Bien sous les 3 Ko du payload Web Push : chaque rubrique est un compteur,
   -- seuls deux prénoms (tronqués) sont du texte libre.
   -- « Votre journée » et non « Ta journée » (spec) : le produit vouvoie.
+  --
+  -- `badge` : le même compte que la rubrique des tâches, que le service worker
+  -- pose en pastille sur l'icône de l'app. Un nombre, jamais un titre : la
+  -- pastille vit dans l'OS, hors de portée du chiffrement.
   return jsonb_build_object('title', '☀️ Votre journée', 'body', left(v_body, 500),
-                            'url', '/ma-journee');
+                            'url', '/ma-journee', 'badge', v_n);
 end;
 $$;
 

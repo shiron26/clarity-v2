@@ -3,6 +3,7 @@ import { Outlet } from 'react-router'
 import { ComebackFlow } from '../../features/comeback/ComebackFlow'
 import { OnboardingFlow } from '../../features/onboarding/OnboardingFlow'
 import { NewTaskHost } from '../../features/tasks/NewTaskHost'
+import { useAppBadge } from '../../hooks/useAppBadge'
 import { usePushBridge } from '../../hooks/usePushBridge'
 import { MobileTabBar } from './MobileTabBar'
 import { MobileTopBar } from './MobileTopBar'
@@ -16,6 +17,8 @@ import { TopBarSlotContext } from './topBarSlot'
 export function AppShell() {
   // Tap sur une notification et réabonnement push : une fois, sous l'auth.
   usePushBridge()
+  // La pastille de l'icône (PWA installée) : ce qui reste à faire aujourd'hui.
+  useAppBadge()
   // Le nœud d'actions de la barre mobile, tenu en state (et non en ref) : c'est
   // ce qui provoque le rendu qui permet à l'écran de s'y portailler.
   const [topBarSlot, setTopBarSlot] = useState<HTMLDivElement | null>(null)
