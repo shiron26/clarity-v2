@@ -21,7 +21,8 @@ sont **chiffrées côté base** (pgcrypto + Vault). La spécification de référ
 | `npm run db:types:local` / `db:types` | régénérer `src/types/database.ts` depuis le local / le hosted — **obligatoire après chaque migration** |
 | `npx supabase start` / `stop` / `status` | stack locale Docker (Studio : http://127.0.0.1:54323) |
 | `npx supabase db reset` | rejoue migrations + seed en local, à volonté |
-| `psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/01_etancheite.sql` | tests SQL rejouables (aussi `02_regles_metier.sql`, `03_dashboard_reads.sql`) |
+| `psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/01_etancheite.sql` | tests SQL rejouables (aussi `02_regles_metier.sql`, `03_dashboard_reads.sql`, `04_ma_journee.sql`) |
+| `npx supabase functions serve --env-file supabase/functions/.env` | Edge Functions en local (`send-digests`) — secrets et mise en ligne : [supabase/functions/README.md](./supabase/functions/README.md) |
 
 Développement : **toujours contre la stack locale** (`supabase start`, `db reset` librement).
 Le hosted ne reçoit que des migrations validées en local.
@@ -105,13 +106,44 @@ Le détail vit dans les commentaires des migrations (`supabase/migrations/`). R�
 - **Les contraintes en `CASE` se réécrivent, elles ne se complètent pas** : la branche
   `else` avale toute valeur non listée, donc ajouter une valeur de `kind` ou de
   `measure` casse la forme en silence.
+- **« Ma journée » ouvre la seule surface `anon` du dépôt** :
+  `public.ingest_daily_snapshot(p_token, p_payload)`, appelée par le collecteur Google
+  (`scripts/apps-script/`), qui n'a pas de session. Elle reste la seule : toute autre
+  fonction se révoque d'`anon`. Le jeton n'est stocké que haché (sha256), l'erreur reste
+  générique (`invalid token`), et le payload entier est rejeté à la première règle
+  violée. Elle n'écrit jamais une ligne `birthday` de source `manual`.
+- **Les fonctions d'envoi sont réservées à `service_role`** (`digest_summary`,
+  `claim_due_digests`, `digest_preview`, `push_subscriptions_gone/_ok`) — elles lisent les
+  abonnements de tout le monde. `claim_due_digests` pose `last_sent_on` **avant** l'envoi
+  (`for update skip locked`) : c'est ce qui garantit un seul résumé par jour, au prix d'un
+  envoi raté non retenté. Un endpoint push est restreint aux services des navigateurs
+  (`private.push_endpoint_is_valid`) : l'Edge Function le POSTe, en accepter un arbitraire
+  en ferait un relais de requêtes.
+- **`get_my_day` ne renvoie pas les tâches** : la vue « Aujourd'hui » est un prédicat
+  client (`src/lib/taskDay.ts`), l'écran les lit par `useTasks`. Le texte de la
+  notification a besoin de les compter côté serveur : `private.day_task_counts` est le
+  **miroir SQL** de `isDueOn` / `isPastDue`, à faire évoluer avec eux.
+  Les heures d'agenda sortent formatées par le serveur (`start_time`, `received_time`) :
+  le fuseau n'est pas lisible côté client.
+- **Une fonction qui (dé)chiffre beaucoup de lignes lit la clé UNE fois** :
+  `v_key := private.app_key()` (ou `with k as (select private.app_key() as key)` dans
+  une `_rows()`), puis `private.enc_k` / `private.dec_k`. `private.enc` / `dec` relisent
+  le Vault à chaque appel : sans conséquence pour une ligne, ruineux pour un
+  instantané de 2 000 anniversaires. L'ingestion ne réécrit pas une section
+  d'anniversaires inchangée (empreinte HMAC dans `digest_settings.birthdays_digest`).
+- **L'appartenance active à un espace a une seule définition**,
+  `private.active_space_ids(user)` : `public.is_space_member` s'appuie dessus pour
+  l'utilisateur courant, le résumé du matin (sans session) pour un utilisateur donné.
+- **`IF … THEN` en PL/pgSQL s'arrête au premier `THEN`**, y compris celui d'un `CASE`
+  dans la condition : parenthéser le `CASE`, sinon « syntax error at end of input ».
 
 ## Règles front
 
 ### Structure
 
 - `src/features/<domaine>/` = **tranches verticales** (hooks + pages + composants du
-  domaine : `auth/`, `home/`, demain `tasks/`, `objectives/`, `reviews/`, `spaces/`).
+  domaine : `auth/`, `home/`, `tasks/`, `day/` (« Ma journée »), demain `objectives/`,
+  `reviews/`, `spaces/`).
   Une feature n'importe **jamais** depuis une autre feature — ce qui est partagé
   remonte dans `src/lib/` (infra non-React), `src/hooks/` (hooks transverses) ou
   `src/components/` (composants partagés).
@@ -161,8 +193,10 @@ devinent pas :
   widget large doit se replier sur sa **largeur réelle** (`span === 1`) et pas seulement
   sur le point de rupture, sinon il est illisible posé sur un tiers de grand écran ;
 - **la bande d'objectifs et le bilan de trimestre sont épinglés**, hors grille. La première
-  est l'identité de l'écran, le second se périme et ne se rattrape pas. Tout le reste,
-  rituel compris, se déplace et se retire ;
+  est l'identité de l'écran, le second se périme et ne se rattrape pas. Le bouton « Ma
+  journée » (`MyDayButton`) l'est aussi, au-dessus des objectifs : coloré tant que la
+  journée n'a pas été ouverte (`digest_settings.last_viewed_on`, posé par le serveur),
+  éteint ensuite. Tout le reste, rituel compris, se déplace et se retire ;
 - **les cartes d'une même ligne ont la même hauteur** : la grille n'aligne pas sur le haut
   (pas d'`items-start`) et `WidgetCard` prend `h-full`. Avec un plafond, sinon une liste de
   trente lignes étirerait ses voisines sur tout l'écran — et donc un corps en
@@ -410,6 +444,11 @@ mobile qui se réveille, et huit queries périmées relancées d'un coup.
   réimplémenter cette règle en TS**. Même chose pour la **régularité** — 4 périodes
   closes, chacune plafonnée à 100 % — qui vit dans `public.objective_regularity()` et
   rend aussi les valeurs projetées pour que le front n'ait rien à recalculer.
+- **Cocher depuis une ligne passe par `useTaskCompletion`** (`src/hooks/`) : mutation
+  optimiste, séquence d'animation (`useDoneSequence`) et effacement de l'animation si
+  la mutation échoue, en un seul tenant. L'accueil, l'écran Tâches et « Ma journée »
+  le partagent ; `{ exit: false }` garde la ligne cochée à sa place au lieu de la
+  faire sortir.
 - Cocher une tâche a deux effets serveur invisibles côté client (rafraîchissement du
   relevé hebdo, création de l'occurrence récurrente suivante) : invalider
   `task.all`, `objectivePeriod.all`, `objectiveRegularity.all` et
@@ -430,18 +469,28 @@ mobile qui se réveille, et huit queries périmées relancées d'un coup.
 
 - **Aucune réponse PostgREST ne va en Cache Storage.** Même statut que la règle
   Realtime ci-dessus : les vues `public.*` renvoient du clair déchiffré, l'écrire
-  sur disque annulerait le chiffrement en base. Concrètement, `workbox.runtimeCaching`
-  de `vite.config.ts` doit rester **vide** — sans route runtime, le service worker
-  n'intercepte que la navigation et les assets same-origin précachés, et les appels
-  cross-origin (REST + websocket Realtime) le traversent sans handler. La recette
-  « NetworkFirst sur `/rest/v1/` » qu'on trouve partout est précisément ce qu'il ne
-  faut pas coller ici.
-- `registerType: 'prompt'` et `workbox.skipWaiting: false` vont ensemble : c'est ce
-  qui laisse le nouveau SW en attente et rend `UpdateBanner` possible. Passer l'un
-  des deux à l'autre valeur transforme silencieusement la bannière en code mort.
-- `globPatterns` doit contenir `woff2` (Sora est auto-hébergée) mais **pas**
-  `webmanifest` — le plugin l'ajoute déjà de son côté. Même piège pour
+  sur disque annulerait le chiffrement en base. Le service worker est écrit à la main
+  (`src/sw.ts`, stratégie `injectManifest` : un SW généré ne sait pas recevoir de
+  push) et ne déclare **aucune route runtime** en dehors du repli de navigation sur
+  l'index précaché — sans route, les appels cross-origin (REST + websocket Realtime)
+  le traversent sans handler. La recette « NetworkFirst sur `/rest/v1/` » qu'on
+  trouve partout est précisément ce qu'il ne faut pas coller ici.
+- `registerType: 'prompt'` et un SW qui n'appelle `skipWaiting()` **que** sur le
+  message `SKIP_WAITING` vont ensemble : c'est ce qui laisse le nouveau SW en attente
+  et rend `UpdateBanner` possible. Un `skipWaiting()` à l'installation transforme
+  silencieusement la bannière en code mort.
+- `injectManifest.globPatterns` doit contenir `woff2` (Sora est auto-hébergée) mais
+  **pas** `webmanifest` — le plugin l'ajoute déjà de son côté. Même piège pour
   `includeAssets` / `includeManifestIcons` : ils font doublon avec le glob.
+- `src/sw.ts` a son propre `tsconfig.sw.json` (lib `WebWorker`, incompatible avec
+  `DOM`) et n'importe que des modules purs (`src/lib/pushMessages.ts`). Le tap sur une
+  notification ne fait pas `client.navigate()` (échoue sur un onglet non contrôlé) :
+  le SW poste `SW_NAVIGATE`, l'app navigue (`usePushBridge`).
+- **Push : la permission ne se demande que sur un geste** (iOS refuse sinon, sans
+  afficher la question), et n'existe sur iPhone que dans la PWA ajoutée à l'écran
+  d'accueil (`pushSupport()`, `src/lib/push.ts`). Le SW montre **toujours** une
+  notification à la réception d'un push, même illisible : iOS révoque l'abonnement
+  d'une app qui reçoit un push sans en afficher.
 - Un déploiement cassé reste servi depuis le cache jusqu'à ce que l'utilisateur
   accepte la mise à jour. Trappe de secours : déployer une fois avec
   `VitePWA({ selfDestroying: true })`, qui désenregistre le SW et purge les caches.
