@@ -25,7 +25,16 @@ export const TIMESTAMP_SIGNAL = '1970-01-01T00:00:00.000Z'
 
 type Views = Database['public']['Views']
 
-export type WritableView = 'task' | 'list' | 'objective' | 'milestone' | 'space' | 'review_item'
+export type WritableView =
+  | 'task'
+  | 'list'
+  | 'objective'
+  | 'milestone'
+  | 'space'
+  | 'review_item'
+  // Lignes `manual` uniquement : le trigger refuse les autres (birthday_not_manual)
+  // et impose `source`.
+  | 'birthday'
 
 /** Colonnes imposées par les triggers — jamais confiées au client (AGENTS.md). */
 type ServerColumn =

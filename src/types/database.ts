@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.15"
-  }
   public: {
     Tables: {
       objective_entry: {
@@ -278,6 +273,66 @@ export type Database = {
       }
     }
     Views: {
+      birthday: {
+        Row: {
+          created_at: string | null
+          day: number | null
+          first_name: string | null
+          id: string | null
+          month: number | null
+          name: string | null
+          phone: string | null
+          source: string | null
+          updated_at: string | null
+          year: number | null
+        }
+        Relationships: []
+      }
+      calendar_event: {
+        Row: {
+          all_day: boolean | null
+          calendar: string | null
+          ends_at: string | null
+          id: string | null
+          location: string | null
+          starts_at: string | null
+          title: string | null
+        }
+        Relationships: []
+      }
+      digest_settings: {
+        Row: {
+          birthday_message_template: string | null
+          enabled: boolean | null
+          last_ingest_at: string | null
+          last_sent_on: string | null
+          last_viewed_on: string | null
+          send_time: string | null
+        }
+        Relationships: []
+      }
+      email: {
+        Row: {
+          from_email: string | null
+          from_name: string | null
+          id: string | null
+          is_important: boolean | null
+          received_at: string | null
+          subject: string | null
+          url: string | null
+        }
+        Relationships: []
+      }
+      ingest_token: {
+        Row: {
+          created_at: string | null
+          id: string | null
+          label: string | null
+          last_used_at: string | null
+          revoked_at: string | null
+        }
+        Relationships: []
+      }
       list: {
         Row: {
           color: string | null
@@ -334,6 +389,15 @@ export type Database = {
         }
         Relationships: []
       }
+      push_subscription: {
+        Row: {
+          created_at: string | null
+          id: string | null
+          last_success_at: string | null
+          user_agent: string | null
+        }
+        Relationships: []
+      }
       review_item: {
         Row: {
           achieved: boolean | null
@@ -380,7 +444,92 @@ export type Database = {
     Functions: {
       app_day_start: { Args: never; Returns: string }
       app_today: { Args: never; Returns: string }
+      birthday_rows: {
+        Args: never
+        Returns: {
+          created_at: string
+          day: number
+          first_name: string
+          id: string
+          month: number
+          name: string
+          phone: string
+          source: string
+          updated_at: string
+          year: number
+        }[]
+      }
+      calendar_event_rows: {
+        Args: never
+        Returns: {
+          all_day: boolean
+          calendar: string
+          ends_at: string
+          id: string
+          location: string
+          starts_at: string
+          title: string
+        }[]
+      }
+      claim_due_digests: {
+        Args: never
+        Returns: {
+          subscriptions: Json
+          summary: Json
+          user_id: string
+        }[]
+      }
+      create_ingest_token: { Args: { p_label: string }; Returns: string }
       delete_account: { Args: never; Returns: undefined }
+      digest_preview: {
+        Args: { p_user_id: string }
+        Returns: {
+          subscriptions: Json
+          summary: Json
+        }[]
+      }
+      digest_settings_rows: {
+        Args: never
+        Returns: {
+          birthday_message_template: string
+          enabled: boolean
+          last_ingest_at: string
+          last_sent_on: string
+          last_viewed_on: string
+          send_time: string
+        }[]
+      }
+      digest_summary: {
+        Args: { p_date?: string; p_user_id: string }
+        Returns: Json
+      }
+      email_rows: {
+        Args: never
+        Returns: {
+          from_email: string
+          from_name: string
+          id: string
+          is_important: boolean
+          received_at: string
+          subject: string
+          url: string
+        }[]
+      }
+      get_my_day: { Args: { p_date?: string }; Returns: Json }
+      ingest_daily_snapshot: {
+        Args: { p_payload: Json; p_token: string }
+        Returns: Json
+      }
+      ingest_token_rows: {
+        Args: never
+        Returns: {
+          created_at: string
+          id: string
+          label: string
+          last_used_at: string
+          revoked_at: string
+        }[]
+      }
       is_objective_visible: { Args: { p_objective: string }; Returns: boolean }
       is_space_member: { Args: { p_space: string }; Returns: boolean }
       list_rows: {
@@ -396,6 +545,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      mark_my_day_viewed: { Args: never; Returns: undefined }
       milestone_rows: {
         Args: never
         Returns: {
@@ -466,6 +616,27 @@ export type Database = {
         }[]
       }
       postpone_overdue_tasks: { Args: never; Returns: number }
+      push_subscription_rows: {
+        Args: never
+        Returns: {
+          created_at: string
+          id: string
+          last_success_at: string
+          user_agent: string
+        }[]
+      }
+      push_subscriptions_gone: { Args: { p_ids: string[] }; Returns: undefined }
+      push_subscriptions_ok: { Args: { p_ids: string[] }; Returns: undefined }
+      register_push_subscription: {
+        Args: {
+          p_auth: string
+          p_endpoint: string
+          p_p256dh: string
+          p_user_agent?: string
+        }
+        Returns: undefined
+      }
+      remove_push_subscription: { Args: { p_id: string }; Returns: undefined }
       review_item_rows: {
         Args: never
         Returns: {
@@ -489,6 +660,7 @@ export type Database = {
           period_year: number
         }[]
       }
+      revoke_ingest_token: { Args: { p_id: string }; Returns: undefined }
       skip_task_occurrence: { Args: { p_task: string }; Returns: string }
       space_objective_weekly_state: {
         Args: { p_iso_week: number; p_iso_year: number; p_objective: string }
@@ -525,6 +697,18 @@ export type Database = {
       }
       touch_last_seen: { Args: never; Returns: string }
       undate_overdue_tasks: { Args: never; Returns: number }
+      unregister_push_subscription: {
+        Args: { p_endpoint: string }
+        Returns: undefined
+      }
+      update_digest_settings: {
+        Args: {
+          p_birthday_message_template?: string
+          p_enabled?: boolean
+          p_send_time?: string
+        }
+        Returns: undefined
+      }
       week_task_count: {
         Args: { p_from: string; p_to: string }
         Returns: {
@@ -664,3 +848,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+

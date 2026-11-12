@@ -412,3 +412,9 @@ enabled = true
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# « Ma journée » : appelée par pg_cron sans JWT (en-tête `x-cron-secret`), ou par
+# l'utilisateur avec son JWT pour la notification de test. La fonction vérifie
+# elle-même l'un ou l'autre : la vérification de la passerelle refuserait le cron.
+[functions.send-digests]
+verify_jwt = false

@@ -1,8 +1,7 @@
 import { Fragment } from 'react'
 import { useAuth } from '../../features/auth/useAuth'
-import { useAppToday } from '../../hooks/useAppToday'
+import { usePendingTodayCount } from '../../hooks/usePendingTodayCount'
 import { useProfile } from '../../hooks/useProfile'
-import { useTasks } from '../../hooks/useTasks'
 import { Logo } from '../brand/Logo'
 import { GearIcon } from '../icons/GearIcon'
 import { LogoutIcon } from '../icons/LogoutIcon'
@@ -18,12 +17,7 @@ export function Sidebar() {
   const displayName = profile.data?.display_name?.trim() || 'Mon compte'
 
   // Badge « Tâches » : ce qui reste à traiter aujourd'hui, retards compris.
-  const today = useAppToday().data
-  const todayTasks = useTasks('today', { today })
-  const overdueTasks = useTasks('overdue', { today })
-  const pending =
-    (todayTasks.data ?? []).filter((t) => t.completed_at === null).length +
-    (overdueTasks.data ?? []).length
+  const pending = usePendingTodayCount() ?? 0
 
   return (
     <nav

@@ -1,6 +1,6 @@
 // Tri de la liste de tâches. Comparateurs purs, aucune persistance : la SPEC §5
 // est explicite — « tris et filtres non mémorisés, aucune préférence à stocker ».
-import type { Task } from '../../hooks/useTasks'
+import type { Task } from '../hooks/useTasks'
 
 export type SortMode = 'manual' | 'prio'
 

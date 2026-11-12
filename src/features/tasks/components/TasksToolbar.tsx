@@ -7,7 +7,7 @@ import { Kbd } from '../../../components/ui/Kbd'
 import { Menu } from '../../../components/ui/Menu'
 import { cn } from '../../../lib/cn'
 import { type TaskScope } from '../taskScope'
-import { SORT_LABELS, SORT_OPTIONS, type SortMode } from '../taskSort'
+import { SORT_LABELS, SORT_OPTIONS, type SortMode } from '../../../lib/taskSort'
 import { TaskViewSwitcher, type ScopeCounts } from './TaskViewSwitcher'
 
 type TasksToolbarProps = {

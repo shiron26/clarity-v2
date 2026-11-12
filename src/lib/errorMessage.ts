@@ -101,6 +101,17 @@ const BUSINESS_RULES: Array<[string, string]> = [
   ['review_identity_immutable', 'La période d’une review ne peut plus changer.'],
   ['review_validate_creator_only', 'Seule la personne qui a lancé la session peut la valider.'],
   ['review_cursor_not_visible', 'Cet objectif n’est pas visible dans cette review.'],
+  // « Ma journée » : jetons du collecteur Google, abonnements push, réglages.
+  // `invalid token` et `invalid_payload` n'ont pas de copie : ils ne reviennent
+  // qu'au collecteur (Apps Script), jamais à l'écran.
+  ['ingest_token_cap', 'Trois jetons actifs au maximum. Révoquez-en un pour en créer un nouveau.'],
+  ['push_endpoint_invalid', 'Ce navigateur a fourni un abonnement aux notifications que Clarity ne reconnaît pas.'],
+  ['push_subscription_cap', 'Dix appareils au maximum reçoivent les notifications. Retirez-en un pour ajouter celui-ci.'],
+  ['digest_template_too_long', 'Le message d’anniversaire fait au plus 500 caractères.'],
+  ['birthday_not_manual', 'Cet anniversaire vient de Google : modifiez-le dans vos contacts ou votre agenda.'],
+  ['birthday_name_required', 'Indiquez le nom de la personne.'],
+  ['birthday_date_invalid', 'Cette date d’anniversaire n’existe pas.'],
+  ['birthday_phone_invalid', 'Le numéro s’écrit en chiffres, au format international sans « + » (ex. 33612345678).'],
 ]
 
 /** Copie métier si l'erreur correspond à une règle serveur connue, sinon null. */

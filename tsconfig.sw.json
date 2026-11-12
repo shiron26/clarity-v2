@@ -1,0 +1,22 @@
+{
+  // Service worker (src/sw.ts) : lib WebWorker à la place de DOM. Il n'importe
+  // que des modules purs de src/lib/ (pushMessages.ts), compilés ici une 2e fois.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.sw.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "WebWorker"],
+    "module": "esnext",
+    "types": [],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src/sw.ts", "src/lib/pushMessages.ts"]
+}
