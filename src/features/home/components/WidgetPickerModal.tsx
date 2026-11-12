@@ -2,7 +2,7 @@ import { Modal } from '../../../components/ui/Modal'
 import { isDuplicable, type MemoKind, type WidgetId, type WidgetInstance } from '../dashboardLayout'
 import { MEMO_ENTRIES, WIDGET_DEFS, widgetDef } from '../widgets/registry'
 import { WIDGET_GLYPH } from '../widgets/glyphs'
-import { WidgetGlyph } from './WidgetGlyph'
+import { WidgetGlyph } from '../../../components/ui/WidgetGlyph'
 import { cn } from '../../../lib/cn'
 
 /**

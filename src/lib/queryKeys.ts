@@ -119,6 +119,16 @@ export const queryKeys = {
     // écriture ne l'invalide — c'est l'horloge qui la fait bouger.
     openings: (years: number[]) => ['review', 'openings', [...years].sort()] as const,
   },
+  // « Ma journée » (public.get_my_day) : la date fait partie de la key, comme
+  // pour les tâches, pour qu'un passage de minuit ne relise pas la veille.
+  myDay: {
+    all: ['my_day'] as const,
+    byDate: (date: string) => ['my_day', date] as const,
+  },
+  // Réglages de « Ma journée » : jetons du collecteur, appareils, envoi.
+  ingestToken: { all: ['ingest_token'] as const },
+  pushSubscription: { all: ['push_subscription'] as const },
+  digestSettings: { all: ['digest_settings'] as const },
 } as const
 
 /**

@@ -4,10 +4,7 @@ import { useAppToday } from '../../hooks/useAppToday'
 import { useLists } from '../../hooks/useLists'
 import { selectPrincipals, selectSecondaries, useObjectives } from '../../hooks/useObjectives'
 import { usePendingBilan } from '../../hooks/usePendingBilan'
-import { type Task } from '../../hooks/useTasks'
-import { useToggleTask } from '../../hooks/useToggleTask'
-import { useUpdateTask } from '../../hooks/useTaskMutations'
-import { useDoneSequence } from '../../hooks/useDoneSequence'
+import { useTaskCompletion } from '../../hooks/useTaskCompletion'
 import { dataErrorMessage } from '../../lib/errorMessage'
 import { objectivesForPeriod, objectivesForQuarter } from '../../lib/reviewPeriod'
 import { year as yearOf } from '../../lib/appDate'
@@ -21,6 +18,7 @@ import { OrganizeBar } from './components/OrganizeBar'
 import { WidgetPickerModal } from './components/WidgetPickerModal'
 import { BilanCard } from './components/BilanCard'
 import { ObjectivesSection } from './components/ObjectivesSection'
+import { MyDayButton } from './components/MyDayButton'
 import { usePrivacy } from '../../hooks/usePrivacy'
 import { useQueriesState, type QueryLike } from '../../hooks/useQueriesState'
 import { PageLoading, PageError } from '../../components/layout/PageState'
@@ -67,9 +65,6 @@ function Dashboard() {
 
   const bilan = usePendingBilan()
 
-  const toggleTask = useToggleTask()
-  const updateTask = useUpdateTask()
-
   const yearPrincipals = useMemo(
     () => selectPrincipals(objectivesQuery.data),
     [objectivesQuery.data],
@@ -78,38 +73,16 @@ function Dashboard() {
     () => selectSecondaries(objectivesQuery.data),
     [objectivesQuery.data],
   )
-  const {
-    poppingObjectiveId,
-    startDoneSequence,
-    clearDone,
-    donePhaseFor,
-    isVisible,
-    reducedMotion,
-  } = useDoneSequence()
-
-  function handleToggle(task: Task) {
-    const completing = task.completed_at === null
-    toggleTask.mutate(
-      { id: task.id, completed: completing },
-      // Le rollback de `onMutate` remet la tâche à non cochée : elle doit
-      // réapparaître sans animation résiduelle.
-      { onError: () => clearDone(task.id) },
-    )
-    // Décocher ne joue rien : seule la complétion se célèbre.
-    if (completing) startDoneSequence(task)
-  }
-
-  function handleToggleImportant(task: Task) {
-    updateTask.mutate({ id: task.id, edits: { is_important: !task.is_important } })
-  }
+  const { poppingObjectiveId, donePhaseFor, isVisible, reducedMotion, onToggle, onToggleImportant } =
+    useTaskCompletion()
 
   const ctx: DashboardCtx | null = today
     ? {
         today,
         privacy,
         reducedMotion,
-        onToggleTask: handleToggle,
-        onToggleImportant: handleToggleImportant,
+        onToggleTask: onToggle,
+        onToggleImportant,
         donePhaseFor,
         poppingObjectiveId,
         isVisible,
@@ -193,8 +166,13 @@ function Dashboard() {
           />
         )}
 
-        {/* Épinglée, et première : c'est l'identité de l'écran. On ne la déplace
-            pas, on ne la rétrécit pas, on ne la retire pas. */}
+        {/* L'accès à « Ma journée », épinglé lui aussi, au-dessus des objectifs :
+            c'est le premier geste de la matinée. Masqué en mode Organiser, qui ne
+            parle que des widgets. */}
+        {!editing && <MyDayButton />}
+
+        {/* Épinglée : c'est l'identité de l'écran. On ne la déplace pas, on ne la
+            rétrécit pas, on ne la retire pas. */}
         <ObjectivesSection />
 
         {/* Le bilan reste épinglé lui aussi : il se périme, on ne le rattrape pas.

@@ -3,7 +3,7 @@ import { Modal } from '../../../components/ui/Modal'
 import type { List } from '../../../hooks/useLists'
 import { cn } from '../../../lib/cn'
 import { SCOPE_NAV_LABELS, SCOPE_ORDER, type TaskScope } from '../taskScope'
-import { SORT_LABELS, SORT_OPTIONS, type SortMode } from '../taskSort'
+import { SORT_LABELS, SORT_OPTIONS, type SortMode } from '../../../lib/taskSort'
 import { listSearch, scopeSearch } from '../taskViewParams'
 import { DEFAULT_LIST_COLOR } from '../../../lib/listPalette'
 

@@ -5,6 +5,8 @@ import { TooltipProvider } from './components/ui/Tooltip'
 import { LoginPage } from './features/auth/pages/LoginPage'
 import { SignupPage } from './features/auth/pages/SignupPage'
 import { ProtectedRoute } from './features/auth/ProtectedRoute'
+import { DaySettingsPage } from './features/day/pages/DaySettingsPage'
+import { MyDayPage } from './features/day/pages/MyDayPage'
 import { DiagnosticPage } from './features/diagnostic/pages/DiagnosticPage'
 import { HomePage } from './features/home/HomePage'
 import { ObjectivesPage } from './features/objectives/pages/ObjectivesPage'
@@ -30,6 +32,11 @@ function App() {
           <Route element={<AppShell />}>
             <Route path="/" element={<HomePage />} />
             <Route path="/taches" element={<TasksPage />} />
+            {/* Là où mène la notification du matin (SPEC-MA-JOURNEE). En
+                français comme les autres adresses, et distincte de la vue
+                « Aujourd'hui » de /taches, qu'elle englobe. */}
+            <Route path="/ma-journee" element={<MyDayPage />} />
+            <Route path="/ma-journee/reglages" element={<DaySettingsPage />} />
             <Route path="/objectifs" element={<ObjectivesPage />} />
             {/* L'année raconte, le trimestre détaille : deux pages, deux
                 adresses partageables. `/annee` ouvre l'année en cours. */}

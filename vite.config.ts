@@ -50,28 +50,27 @@ export default defineConfig({
         shortcuts: [
           { name: 'Tâches', url: '/taches' },
           { name: 'Revue', url: '/review' },
+          { name: 'Ma journée', url: '/ma-journee' },
         ],
       },
-      workbox: {
+      // Service worker écrit à la main (src/sw.ts) : un SW généré ne sait pas
+      // recevoir de notification push. Il reproduit l'ancien `generateSW` à
+      // l'identique (précache, repli de navigation, purge, mise à jour sur
+      // demande) — voir son en-tête. `skipWaiting` / `clientsClaim` n'existent
+      // plus ici : c'est le SW qui n'appelle `skipWaiting()` que sur le message
+      // d'UpdateBanner, ce qui garde `registerType: 'prompt'` vivant.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectManifest: {
         // `woff2` est absent du glob par défaut : sans lui, Sora n'est pas précachée
         // et la coquille hors ligne perd sa typographie. `webmanifest` en revanche
         // n'a rien à y faire — le plugin l'ajoute déjà en additionalManifestEntries.
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-        // SPA : toute navigation retombe sur l'index précaché.
-        navigateFallback: '/index.html',
-        // Aucune route de l'app ne contient de point : ce qui y ressemble est un
-        // fichier, et servir index.html à sa place masquerait un asset manquant.
-        navigateFallbackDenylist: [/\/[^/?]+\.[^/?]*$/],
-        cleanupOutdatedCaches: true,
-        // Cohérent avec registerType 'prompt' : le SW installé attend en `waiting`
-        // jusqu'à updateServiceWorker().
-        skipWaiting: false,
-        clientsClaim: false,
-        // Volontairement AUCUN runtimeCaching. Les vues `public.*` renvoient du clair
-        // déchiffré : mettre une réponse PostgREST en Cache Storage écrirait des
-        // données sensibles sur le disque et annulerait le chiffrement en base.
-        // Sans règle runtime, les appels cross-origin (REST + websocket Realtime)
-        // traversent le service worker sans être interceptés.
+        // Volontairement AUCUNE route runtime dans src/sw.ts. Les vues `public.*`
+        // renvoient du clair déchiffré : mettre une réponse PostgREST en Cache
+        // Storage écrirait des données sensibles sur le disque et annulerait le
+        // chiffrement en base.
       },
       // Le SW n'est servi qu'en build : tout test PWA passe par `npm run preview`.
       devOptions: { enabled: false },

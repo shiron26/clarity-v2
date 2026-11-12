@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { useAppDayStart, useAppToday } from '../../../hooks/useAppToday'
-import { useDoneSequence } from '../../../hooks/useDoneSequence'
+import { useTaskCompletion } from '../../../hooks/useTaskCompletion'
 import { selectMemoLists, selectTaskLists, useLists } from '../../../hooks/useLists'
 import { useNewTask } from '../../../hooks/useNewTask'
 import { usePrivacy } from '../../../hooks/usePrivacy'
@@ -17,13 +17,11 @@ import {
 } from '../../../hooks/useObjectivePeriods'
 import { selectPrincipals, useObjectives } from '../../../hooks/useObjectives'
 import { useTasks, type Task } from '../../../hooks/useTasks'
-import { useToggleTask } from '../../../hooks/useToggleTask'
 import {
   useDeleteTask,
   usePostponeOverdue,
   useUndateOverdue,
   useReorderTasks,
-  useUpdateTask,
 } from '../../../hooks/useTaskMutations'
 import {
   daysOfWeek as weekDaysOf,
@@ -51,17 +49,17 @@ import { TasksObjectiveStrip } from '../components/TasksObjectiveStrip'
 import { TasksToolbar } from '../components/TasksToolbar'
 import type { ScopeCounts } from '../components/TaskViewSwitcher'
 import { taskAge } from '../../../lib/taskAge'
-import { DEFAULT_SORT, sortTasks, type SortMode } from '../taskSort'
+import { DEFAULT_SORT, sortTasks, type SortMode } from '../../../lib/taskSort'
 import {
   inOverdueScope,
   isFlatScope,
-  isPastDue,
   matchesScope,
   matchesSearch,
   pendingCount,
   SCOPE_ORDER,
   SCOPE_TITLES,
 } from '../taskScope'
+import { isPastDue } from '../../../lib/taskDay'
 import { parseTaskParams, withLists, withoutLists } from '../taskViewParams'
 import { useQueriesState, type QueryLike } from '../../../hooks/useQueriesState'
 import { PageLoading } from '../../../components/layout/PageState'
@@ -126,8 +124,6 @@ export function TasksPage() {
   const progressQuery = useObjectiveProgress(principalIds)
   const activeDaysQuery = useObjectiveActiveDays(principalIds, quarterRange?.from, quarterRange?.to)
 
-  const toggleTask = useToggleTask()
-  const updateTask = useUpdateTask()
   const deleteTask = useDeleteTask()
   const reorderTasks = useReorderTasks()
   const postponeOverdue = usePostponeOverdue()
@@ -156,12 +152,14 @@ export function TasksPage() {
 
   const {
     poppingObjectiveId,
-    startDoneSequence,
-    clearDone,
     donePhaseFor,
     isVisible,
     reducedMotion,
-  } = useDoneSequence()
+    onToggle: handleToggle,
+    onToggleImportant,
+    toggleTask,
+    updateTask,
+  } = useTaskCompletion()
 
   // --- Index de rendu (les vues n'ont pas de métadonnée de clé étrangère) ----
   // Les aide-mémoire (Courses, Idées, Pense-bête) et leur contenu ne paraissent
@@ -283,19 +281,6 @@ export function TasksPage() {
   }, [allTasks, today, principalIds, activeDays])
 
   // --- Actions ---------------------------------------------------------------
-  const handleToggle = useCallback(
-    (task: Task) => {
-      const completing = task.completed_at === null
-      toggleTask.mutate(
-        { id: task.id, completed: completing },
-        { onError: () => clearDone(task.id) },
-      )
-      // Décocher ne joue rien : seule la complétion se célèbre.
-      if (completing) startDoneSequence(task)
-    },
-    [toggleTask, clearDone, startDoneSequence],
-  )
-
   // Les modales vivent dans l'URL : la sidebar et la barre d'onglets peuvent les
   // ouvrir sans importer quoi que ce soit de la feature, et le lien est partageable.
   function openLists() {
@@ -388,8 +373,7 @@ export function TasksPage() {
     today: anchor,
     reducedMotion,
     onToggle: handleToggle,
-    onToggleImportant: (t) =>
-      updateTask.mutate({ id: t.id, edits: { is_important: !t.is_important } }),
+    onToggleImportant,
     onPickList: (t, value) => updateTask.mutate({ id: t.id, edits: { list_id: value } }),
     onPickDue: (t, value) => updateTask.mutate({ id: t.id, edits: { due_date: value } }),
     onOpen: (t) => setEditingId(t.id),

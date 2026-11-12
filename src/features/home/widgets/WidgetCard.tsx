@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { cn } from '../../../lib/cn'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { dataErrorMessage } from '../../../lib/errorMessage'
-import { WidgetGlyph } from '../components/WidgetGlyph'
+import { CardHeader } from '../../../components/ui/CardHeader'
 
 /**
  * La coquille commune des widgets : c'est le `rounded-2xl bg-surface p-5
@@ -62,18 +62,7 @@ export function WidgetCard({
         className,
       )}
     >
-      <div className="mb-2.5 flex shrink-0 items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          {icon && <WidgetGlyph icon={icon} color={iconColor} />}
-          <h2 className="min-w-0 truncate text-card font-semibold">{title}</h2>
-        </div>
-        {(meta || action) && (
-          <div className="flex shrink-0 items-center gap-3 text-label text-ink-muted">
-            {meta}
-            {action}
-          </div>
-        )}
-      </div>
+      <CardHeader title={title} icon={icon} iconColor={iconColor} meta={meta} action={action} />
 
       {/* `-m-1 p-1` : le rectangle de clipping recule de 4 px. Un liseré de
           sélection et un anneau de focus se peignent HORS de la boîte, et

@@ -3,6 +3,7 @@ import { Outlet } from 'react-router'
 import { ComebackFlow } from '../../features/comeback/ComebackFlow'
 import { OnboardingFlow } from '../../features/onboarding/OnboardingFlow'
 import { NewTaskHost } from '../../features/tasks/NewTaskHost'
+import { usePushBridge } from '../../hooks/usePushBridge'
 import { MobileTabBar } from './MobileTabBar'
 import { MobileTopBar } from './MobileTopBar'
 import { PrivacyProvider } from './PrivacyProvider'
@@ -13,6 +14,8 @@ import { TopBarSlotContext } from './topBarSlot'
 
 // Cadre applicatif : sidebar en desktop, top bar + barre d'onglets en mobile.
 export function AppShell() {
+  // Tap sur une notification et réabonnement push : une fois, sous l'auth.
+  usePushBridge()
   // Le nœud d'actions de la barre mobile, tenu en state (et non en ref) : c'est
   // ce qui provoque le rendu qui permet à l'écran de s'y portailler.
   const [topBarSlot, setTopBarSlot] = useState<HTMLDivElement | null>(null)

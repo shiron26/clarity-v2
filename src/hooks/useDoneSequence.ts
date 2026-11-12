@@ -9,7 +9,12 @@ import { usePrefersReducedMotion } from './usePrefersReducedMotion'
 /** Le strict minimum dont la séquence a besoin d'une tâche. */
 type Completable = { id: string; objective_id: string | null }
 
-export function useDoneSequence() {
+/**
+ * `exit: false` : la ligne flashe puis RESTE à sa place, barrée (« Ma journée »,
+ * qui est le bilan du jour). Ni repli, ni sortie, ni allumage de la carte
+ * d'objectif — il n'y a pas de carte d'objectif sur cet écran.
+ */
+export function useDoneSequence({ exit = true }: { exit?: boolean } = {}) {
   const reducedMotion = usePrefersReducedMotion()
   const [justDone, setJustDone] = useState<Map<string, DonePhase>>(new Map())
   const [poppingObjectiveId, setPoppingObjectiveId] = useState<string | null>(null)
@@ -31,6 +36,10 @@ export function useDoneSequence() {
       // Mouvement réduit : la tâche disparaît sans flash ni repli.
       if (reducedMotion) return
       setJustDone((prev) => new Map(prev).set(task.id, 1))
+      if (!exit) {
+        timers.current.push(window.setTimeout(() => clearDone(task.id), DONE_FLASH_MS))
+        return
+      }
       if (task.objective_id) setPoppingObjectiveId(task.objective_id)
 
       timers.current.push(
@@ -44,7 +53,7 @@ export function useDoneSequence() {
         }, DONE_CLEAR_MS),
       )
     },
-    [reducedMotion, clearDone],
+    [reducedMotion, clearDone, exit],
   )
 
   const donePhaseFor = useCallback((taskId: string) => justDone.get(taskId), [justDone])

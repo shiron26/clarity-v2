@@ -6,6 +6,9 @@
 // mêmes lignes et pourraient se contredire pendant une invalidation.
 import { rollingWeekEnd, type IsoDate } from '../../lib/appDate'
 import type { Task } from '../../hooks/useTasks'
+// « Dû aujourd'hui » et « en retard » sont partagés avec « Ma journée », qui
+// doit montrer exactement la même chose que la vue « Aujourd'hui ».
+import { isDueOn, isPastDue } from '../../lib/taskDay'
 
 /**
  * Les quatre vues de la maquette (REFONTE §5). « En retard » n'en est pas une :
@@ -65,14 +68,6 @@ export function isFlatScope(scope: TaskScope): boolean {
   return scope === 'today' || scope === 'undated'
 }
 
-/**
- * Échéance passée. Le filtre de complétion est laissé à l'appelant : une tâche
- * qu'on vient de cocher reste affichée le temps de son animation de sortie.
- */
-export function isPastDue(task: Task, today: IsoDate): boolean {
-  return task.due_date !== null && task.due_date < today
-}
-
 /** La liste sélectionnée, quand il y en a une, restreint toutes les vues. */
 export function matchesList(task: Task, listId?: string | null): boolean {
   return !listId || task.list_id === listId
@@ -93,7 +88,7 @@ export function matchesScope(
   if (!matchesList(task, listId)) return false
   switch (scope) {
     case 'today':
-      return task.due_date === today
+      return isDueOn(task, today)
     case 'week':
       // Fenêtre GLISSANTE de sept jours, la même que le widget « Votre semaine ».
       // Bornée à dimanche elle rétrécissait au fil de la semaine, jusqu'à ne plus
